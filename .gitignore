@@ -1,0 +1,24 @@
+# 대용량 데이터 파일
+*.csv
+*.xlsx
+*.pth
+*.png
+*.jpg
+*.jpeg
+
+# 캐시 / 임시
+__pycache__/
+*.py[cod]
+.streamlit/
+_test_*.py
+_eval.py
+_tune.py
+st_out.txt
+st_err.txt
+streamlit_out.txt
+streamlit_err.txt
+
+# 환경
+.env
+venv/
+.venv/
