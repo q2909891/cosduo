@@ -1025,24 +1025,23 @@ def main():
             st.altair_chart(hist_ur, use_container_width=True)
 
         with col_j:
-            st.write("**사용자별 평점 수 분포 (상위 3% 제외)**")
-            user_cnt_s = inter.groupby("User_ID").size()
-            user_cnt_df = user_cnt_s[
-                user_cnt_s <= user_cnt_s.quantile(0.97)
-            ].reset_index(drop=True).to_frame()
-            user_cnt_df.columns = ["평점 수"]
-            hist_uc = (
-                alt.Chart(user_cnt_df)
+            st.write("**제품별 interaction 수 분포**")
+            prod_cnt_s = inter.groupby("Product_ID").size().reset_index()
+            prod_cnt_s.columns = ["Product_ID", "interaction 수"]
+            hist_pc = (
+                alt.Chart(prod_cnt_s)
                 .mark_bar(color="#45B7D1", opacity=0.85)
                 .encode(
-                    x=alt.X("평점 수:Q", bin=alt.Bin(maxbins=25),
-                            title="사용자당 평점 수"),
-                    y=alt.Y("count()", title="사용자 수"),
-                    tooltip=[alt.Tooltip("평점 수:Q", bin=alt.Bin(maxbins=25)), "count()"],
+                    x=alt.X("interaction 수:Q", bin=alt.Bin(maxbins=20),
+                            title="제품당 interaction 수"),
+                    y=alt.Y("count()", title="제품 수"),
+                    tooltip=[alt.Tooltip("interaction 수:Q", bin=alt.Bin(maxbins=20)),
+                             "count()"],
                 )
                 .properties(height=260)
             )
-            st.altair_chart(hist_uc, use_container_width=True)
+            st.altair_chart(hist_pc, use_container_width=True)
+            st.caption("※ 모든 사용자(15,000명)가 카테고리별 1개씩 정확히 5개 평점을 남긴 구조")
 
         st.divider()
 
