@@ -1,6 +1,6 @@
 """
 스킨케어 추천 시스템 Phase 2
-하이브리드 추천 엔진: 기능매칭(0%) + KNN평점(60%) + 올리브영평점(40%)
+하이브리드 추천 엔진: 기능매칭(50%) + KNN평점(30%) + 올리브영평점(20%)
 """
 
 import streamlit as st
@@ -149,7 +149,7 @@ def build_knn(_users_df):
     feats = _users_df[SEVERITY_COLS].fillna(0).values
     scaler = MinMaxScaler()
     feats_scaled = scaler.fit_transform(feats)
-    knn = NearestNeighbors(n_neighbors=20, metric="cosine", algorithm="brute")
+    knn = NearestNeighbors(n_neighbors=10, metric="cosine", algorithm="brute")
     knn.fit(feats_scaled)
     return knn, scaler
 
@@ -211,10 +211,10 @@ def infer_skin_scores(image_bytes: bytes) -> dict:
         cls_pred = int(cls(x).argmax(dim=1).item()) # 0 or 1
 
     return {
-        "Acne_Severity":         max(0.0, float(reg_out[0])),
-        "Dryness_Severity":      max(0.0, float(reg_out[1])),
-        "Aging_Severity":        max(0.0, float(reg_out[2])),
-        "Pigmentation_Severity": max(0.0, float(reg_out[3])),
+        "Acne_Severity":         float(np.clip(reg_out[0], 0.0, 10.0)),
+        "Dryness_Severity":      float(np.clip(reg_out[1], 0.0, 10.0)),
+        "Aging_Severity":        float(np.clip(reg_out[2], 0.0,  4.2)),
+        "Pigmentation_Severity": float(np.clip(reg_out[3], 0.0,  6.0)),
         "Sensitivity_Severity":  6.49 if cls_pred == 1 else 0.0,
     }
 
@@ -261,9 +261,9 @@ def recommend(
     knn_mdl,
     scaler,
     inter_df: pd.DataFrame,
-    alpha: float = 0.0,   # 기능매칭 (튜닝 후)
-    beta: float = 0.6,    # KNN평점  (튜닝 후)
-    gamma: float = 0.4,   # 올리브영평점 (튜닝 후)
+    alpha: float = 0.5,   # 기능매칭
+    beta: float = 0.3,    # KNN평점
+    gamma: float = 0.2,   # 올리브영평점
     model_type: str = "hybrid",
     top_candidates: int = 3,
 ):
@@ -296,28 +296,28 @@ def recommend(
             gamma * df["oy_norm"]
         )
 
-    # 카테고리별 최고 1개
+    # 카테고리별 top_candidates개 반환
     recs = []
     for cat in CATEGORIES:
         cat_df = df[df["카테고리"] == cat]
         if cat_df.empty:
             continue
         candidates = cat_df.nlargest(top_candidates, "final_score")
-        best = candidates.iloc[0]
-        recs.append({
-            "category":    cat,
-            "product_id":  int(best["Product_ID"]),
-            "name":        str(best["올리브영 상품명"]),
-            "brand":       str(best["올리브영 브랜드"]),
-            "functions":   str(best["기능(Function)"]),
-            "feat_score":  round(float(best["feat_score"]), 4),
-            "knn_score":   round(float(best["knn_score"]), 4),
-            "oy_score":    round(float(best["oy_norm"]), 4),
-            "final_score": round(float(best["final_score"]), 4),
-            "price":       best["할인가(원)"],
-            "oy_rank":     best["올리브영 순위"],
-            "avg_rating":  best["평균 평점"],
-        })
+        for _, best in candidates.iterrows():
+            recs.append({
+                "category":    cat,
+                "product_id":  int(best["Product_ID"]),
+                "name":        str(best["올리브영 상품명"]),
+                "brand":       str(best["올리브영 브랜드"]),
+                "functions":   str(best["기능(Function)"]),
+                "feat_score":  round(float(best["feat_score"]), 4),
+                "knn_score":   round(float(best["knn_score"]), 4),
+                "oy_score":    round(float(best["oy_norm"]), 4),
+                "final_score": round(float(best["final_score"]), 4),
+                "price":       best["할인가(원)"],
+                "oy_rank":     best["올리브영 순위"],
+                "avg_rating":  best["평균 평점"],
+            })
     return recs, df
 
 
@@ -432,17 +432,17 @@ def render_card(rec: dict):
   <div style="margin-bottom:10px">{tags}</div>
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:12px">
     <div>
-      <span class="score-label">기능매칭 (50%)</span>
+      <span class="score-label">기능매칭 (α=0.5)</span>
       <div style="font-weight:bold">{rec['feat_score']:.3f}</div>
       {bar(rec['feat_score'])}
     </div>
     <div>
-      <span class="score-label">KNN평점 (30%)</span>
+      <span class="score-label">KNN평점 (β=0.3)</span>
       <div style="font-weight:bold">{rec['knn_score']:.3f}</div>
       {bar(rec['knn_score'])}
     </div>
     <div>
-      <span class="score-label">올리브영평점 (20%)</span>
+      <span class="score-label">올리브영평점 (γ=0.2)</span>
       <div style="font-weight:bold">{rec['oy_score']:.3f}</div>
       {bar(rec['oy_score'])}
     </div>
@@ -455,10 +455,10 @@ def render_card(rec: dict):
 # 8. MAIN APP
 # ─────────────────────────────────────────────
 def main():
-    st.title("🧴 올리브영 스킨케어 추천 시스템")
+    st.title("🧴 COSDUO — 얼굴 이미지 기반 스킨케어 루틴 추천")
     st.caption(
-        "피부 분석 기반 하이브리드 추천 엔진 | "
-        "KNN 60% + 올리브영 평점 40% (그리드 서치 튜닝)"
+        "ResNet50 피부 분석 → 하이브리드 추천 (기능매칭 50% + KNN 30% + 올리브영 평점 20%) | "
+        "이화여자대학교 데이터사이언스대학원 DUO COS"
     )
 
     with st.spinner("데이터 로딩 중..."):
@@ -488,10 +488,19 @@ def main():
                 for col in SEVERITY_COLS:
                     emoji = SEVERITY_EMOJI[col]
                     label = SEVERITY_LABELS[col]
-                    user_scores[col] = st.slider(
-                        f"{emoji} {label}", 0.0, 10.0, 3.0, 0.1,
-                        help="0: 없음 · 5: 보통 · 10: 심각",
-                    )
+                    if col == "Sensitivity_Severity":
+                        sens = st.radio(
+                            f"{emoji} {label}",
+                            ["비민감 (0.0)", "민감 (6.49)"],
+                            horizontal=True,
+                            help="민감성 피부 여부를 선택하세요",
+                        )
+                        user_scores[col] = 6.49 if "민감" in sens and "비민감" not in sens else 0.0
+                    else:
+                        user_scores[col] = st.slider(
+                            f"{emoji} {label}", 0.0, 10.0, 3.0, 0.1,
+                            help="0: 없음 · 5: 보통 · 10: 심각",
+                        )
 
             elif input_mode == "데이터셋에서 선택":
                 valid_y = y_labels.dropna(subset=SEVERITY_COLS)
@@ -518,7 +527,7 @@ def main():
                     emoji = SEVERITY_EMOJI[col]
                     label = SEVERITY_LABELS[col]
                     val   = user_scores[col]
-                    bar_w = int(val * 10)
+                    bar_w = min(10, int(val))
                     st.markdown(
                         f"**{emoji} {label}** `{val:.1f}` "
                         f"{'█' * bar_w}{'░' * (10 - bar_w)}"
@@ -562,6 +571,12 @@ def main():
                     "knn":     "👥 KNN (협업 필터링만)",
                 }[x],
             )
+            show_top3 = st.checkbox(
+                "카테고리별 3개 추천 보기",
+                value=False,
+                help="체크하면 카테고리별 상위 3개 제품을 모두 표시합니다",
+            )
+            top_n = 3 if show_top3 else 1
             run_btn = st.button("✨ 추천 받기", type="primary",
                                 use_container_width=True)
 
@@ -571,24 +586,27 @@ def main():
                     recs, _ = recommend(
                         user_scores, products, users, knn_mdl, scaler, inter,
                         model_type=model_type,
+                        top_candidates=top_n,
                     )
                 st.session_state["last_recs"] = recs
                 st.session_state["last_scores"] = user_scores
+                st.session_state["last_top_n"] = top_n
 
             if "last_recs" in st.session_state:
                 recs = st.session_state["last_recs"]
                 u_weights = get_user_weights(st.session_state["last_scores"])
                 top_funcs = sorted(u_weights, key=u_weights.get, reverse=True)[:3]
                 func_kor = " · ".join(FUNCTION_KOR.get(f, f) for f in top_funcs)
-                main_concern = max(
-                    st.session_state["last_scores"],
-                    key=st.session_state["last_scores"].get
-                )
+                scores = st.session_state["last_scores"]
+                non_sens = {k: v for k, v in scores.items() if k != "Sensitivity_Severity"}
+                main_concern = max(non_sens, key=non_sens.get)
+                sens_str = " | 🌿 민감성 피부" if scores.get("Sensitivity_Severity", 0) > 0 else ""
                 st.info(
-                    f"주요 피부 고민: **{SEVERITY_LABELS[main_concern]}** | "
+                    f"주요 피부 고민: **{SEVERITY_LABELS[main_concern]}**{sens_str} | "
                     f"추천 기능 순위: {func_kor}"
                 )
-                st.subheader(f"✅ 맞춤 추천 {len(recs)}개 (카테고리별 1개)")
+                per_cat = st.session_state.get("last_top_n", 1)
+                st.subheader(f"✅ 맞춤 추천 {len(recs)}개 (카테고리별 {per_cat}개)")
                 for rec in recs:
                     render_card(rec)
             else:
@@ -597,7 +615,7 @@ def main():
 | 구성 요소 | 가중치 | 설명 |
 |-----------|--------|------|
 | 기능 매칭 | **50%** | 피부 문제 → 필요 기능 매핑 |
-| KNN 평점  | **30%** | 유사 사용자(K=20) 평균 평점 |
+| KNN 평점  | **30%** | 유사 사용자(K=10) 평균 평점 |
 | 올리브영 평점 | **20%** | 올리브영 평균 별점 |
 
 **추천 카테고리:** 마스크팩 · 스킨케어 · 앰플/세럼 · 크림/로션 · 선케어
