@@ -465,7 +465,7 @@ def main():
         knn_mdl, scaler = build_knn(users)
 
     tab_rec, tab_eval, tab_data = st.tabs(
-        ["🎯 추천받기", "📊 성능 비교", "📋 데이터 현황"]
+        ["🎯 추천받기", "📊 성능 비교", "📈 EDA / 데이터 분석"]
     )
 
     # ══════════════════════════════════════
@@ -813,19 +813,23 @@ def main():
             st.altair_chart(chart_p, use_container_width=True)
 
     # ══════════════════════════════════════
-    # TAB 3 : 데이터 현황
+    # TAB 3 : EDA / 데이터 분석
     # ══════════════════════════════════════
     with tab_data:
-        st.subheader("데이터셋 현황")
+        st.subheader("EDA / 데이터 분석")
+        import altair as alt
 
+        # ── 개요 지표 ──
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Kaggle 사용자", f"{len(users):,}명")
         c2.metric("Interactions",  f"{len(inter):,}개")
-        c3.metric("우리 사용자",   f"{len(y_labels):,}명")
+        c3.metric("학습 레이블",   f"{len(y_labels):,}명")
         c4.metric("올리브영 제품", f"{len(products):,}개")
 
         st.divider()
-        import altair as alt
+
+        # ── 섹션 1: 올리브영 제품 DB ──
+        st.markdown("### 🛒 올리브영 제품 DB 분석")
 
         col_a, col_b = st.columns(2)
         with col_a:
@@ -839,12 +843,11 @@ def main():
                     x=alt.X("카테고리:N", sort="-y", axis=alt.Axis(labelAngle=-20)),
                     y="제품 수:Q",
                     color=alt.Color("카테고리:N", legend=None,
-                                    scale=alt.Scale(
-                                        domain=CATEGORIES,
-                                        range=list(CAT_COLOR.values()))),
+                                    scale=alt.Scale(domain=CATEGORIES,
+                                                    range=list(CAT_COLOR.values()))),
                     tooltip=["카테고리", "제품 수"],
                 )
-                .properties(height=280)
+                .properties(height=260)
             )
             st.altair_chart(bar1, use_container_width=True)
 
@@ -864,12 +867,187 @@ def main():
                     y=alt.Y("기능_KOR:N", sort="-x"),
                     tooltip=["기능_KOR", "기능", "제품 수"],
                 )
-                .properties(height=280)
+                .properties(height=260)
             )
             st.altair_chart(bar2, use_container_width=True)
 
+        col_c, col_d = st.columns(2)
+        with col_c:
+            st.write("**올리브영 평균 평점 분포**")
+            rating_data = products["평균 평점"].dropna().reset_index(drop=True).to_frame()
+            rating_data.columns = ["평균 평점"]
+            hist_rating = (
+                alt.Chart(rating_data)
+                .mark_bar(color="#FF6B6B", opacity=0.85)
+                .encode(
+                    x=alt.X("평균 평점:Q", bin=alt.Bin(step=0.1), title="평균 평점"),
+                    y=alt.Y("count()", title="제품 수"),
+                    tooltip=[alt.Tooltip("평균 평점:Q", bin=alt.Bin(step=0.1)), "count()"],
+                )
+                .properties(height=260)
+            )
+            st.altair_chart(hist_rating, use_container_width=True)
+
+        with col_d:
+            st.write("**제품 가격대 분포 (상위 3% 제외)**")
+            price_data = products["할인가(원)"].dropna()
+            price_data = price_data[price_data <= price_data.quantile(0.97)].reset_index(drop=True).to_frame()
+            price_data.columns = ["할인가"]
+            hist_price = (
+                alt.Chart(price_data)
+                .mark_bar(color="#96CEB4", opacity=0.85)
+                .encode(
+                    x=alt.X("할인가:Q", bin=alt.Bin(maxbins=30), title="할인가(원)"),
+                    y=alt.Y("count()", title="제품 수"),
+                    tooltip=[alt.Tooltip("할인가:Q", bin=alt.Bin(maxbins=30)), "count()"],
+                )
+                .properties(height=260)
+            )
+            st.altair_chart(hist_price, use_container_width=True)
+
         st.divider()
-        st.write("**Severity → 기능 매핑 룰**")
+
+        # ── 섹션 2: Kaggle 사용자 피부 분석 ──
+        st.markdown("### 👤 Kaggle 사용자 피부 분석 (15,000명)")
+
+        col_e, col_f = st.columns(2)
+        with col_e:
+            st.write("**Severity 항목별 분포 (0 초과 사용자만)**")
+            sev_long = users[SEVERITY_COLS].copy()
+            sev_long.columns = [SEVERITY_LABELS[c] for c in SEVERITY_COLS]
+            sev_long = sev_long.melt(var_name="피부 고민", value_name="Severity")
+            sev_long = sev_long[sev_long["Severity"] > 0]
+            hist_sev = (
+                alt.Chart(sev_long)
+                .mark_bar(opacity=0.75)
+                .encode(
+                    x=alt.X("Severity:Q", bin=alt.Bin(maxbins=20), title="Severity 점수"),
+                    y=alt.Y("count()", title="사용자 수"),
+                    color=alt.Color("피부 고민:N"),
+                    tooltip=["피부 고민",
+                             alt.Tooltip("Severity:Q", bin=alt.Bin(maxbins=20)),
+                             "count()"],
+                )
+                .properties(height=280)
+            )
+            st.altair_chart(hist_sev, use_container_width=True)
+
+        with col_f:
+            st.write("**Severity 간 상관관계 히트맵**")
+            corr = users[SEVERITY_COLS].corr().round(3)
+            corr_long = corr.reset_index().melt(id_vars="index")
+            corr_long.columns = ["x", "y", "상관계수"]
+            corr_long["x_kor"] = corr_long["x"].map(SEVERITY_LABELS)
+            corr_long["y_kor"] = corr_long["y"].map(SEVERITY_LABELS)
+            heatmap = (
+                alt.Chart(corr_long)
+                .mark_rect()
+                .encode(
+                    x=alt.X("x_kor:N", title=None, axis=alt.Axis(labelAngle=-30)),
+                    y=alt.Y("y_kor:N", title=None),
+                    color=alt.Color(
+                        "상관계수:Q",
+                        scale=alt.Scale(scheme="redblue", domain=[-1, 1]),
+                    ),
+                    tooltip=["x_kor", "y_kor",
+                             alt.Tooltip("상관계수:Q", format=".3f")],
+                )
+                .properties(height=280)
+            )
+            text_layer = heatmap.mark_text(fontSize=11).encode(
+                text=alt.Text("상관계수:Q", format=".2f"),
+                color=alt.condition(
+                    "abs(datum['상관계수']) > 0.5",
+                    alt.value("white"),
+                    alt.value("black"),
+                ),
+            )
+            st.altair_chart(heatmap + text_layer, use_container_width=True)
+
+        col_g, col_h = st.columns(2)
+        with col_g:
+            st.write("**민감성 피부 비율**")
+            sens_cnt = users["Sensitivity_Severity"].apply(
+                lambda v: "민감성" if v > 0 else "비민감성"
+            ).value_counts().reset_index()
+            sens_cnt.columns = ["구분", "사용자 수"]
+            pie = (
+                alt.Chart(sens_cnt)
+                .mark_arc(innerRadius=50)
+                .encode(
+                    theta=alt.Theta("사용자 수:Q"),
+                    color=alt.Color(
+                        "구분:N",
+                        scale=alt.Scale(
+                            domain=["민감성", "비민감성"],
+                            range=["#FF6B6B", "#4ECDC4"],
+                        ),
+                    ),
+                    tooltip=["구분", "사용자 수"],
+                )
+                .properties(height=260)
+            )
+            st.altair_chart(pie, use_container_width=True)
+
+        with col_h:
+            st.write("**Severity 통계 요약**")
+            sev_stats = users[SEVERITY_COLS].describe().T.reset_index()
+            sev_stats.columns = ["컬럼"] + list(sev_stats.columns[1:])
+            sev_stats["피부 고민"] = sev_stats["컬럼"].map(SEVERITY_LABELS)
+            st.dataframe(
+                sev_stats[["피부 고민", "mean", "std", "min", "50%", "max"]]
+                .rename(columns={"mean": "평균", "std": "표준편차",
+                                 "min": "최솟값", "50%": "중앙값", "max": "최댓값"})
+                .set_index("피부 고민"),
+                use_container_width=True,
+            )
+
+        st.divider()
+
+        # ── 섹션 3: 사용자-제품 상호작용 분석 ──
+        st.markdown("### 🔗 Kaggle 사용자-제품 상호작용")
+
+        col_i, col_j = st.columns(2)
+        with col_i:
+            st.write("**사용자 평점 분포**")
+            rating_dist = inter["User_Rating"].dropna().reset_index(drop=True).to_frame()
+            rating_dist.columns = ["평점"]
+            hist_ur = (
+                alt.Chart(rating_dist)
+                .mark_bar(color="#FFA94D", opacity=0.85)
+                .encode(
+                    x=alt.X("평점:Q", bin=alt.Bin(step=0.5), title="User Rating"),
+                    y=alt.Y("count()", title="건수"),
+                    tooltip=[alt.Tooltip("평점:Q", bin=alt.Bin(step=0.5)), "count()"],
+                )
+                .properties(height=260)
+            )
+            st.altair_chart(hist_ur, use_container_width=True)
+
+        with col_j:
+            st.write("**사용자별 평점 수 분포 (상위 3% 제외)**")
+            user_cnt_s = inter.groupby("User_ID").size()
+            user_cnt_df = user_cnt_s[
+                user_cnt_s <= user_cnt_s.quantile(0.97)
+            ].reset_index(drop=True).to_frame()
+            user_cnt_df.columns = ["평점 수"]
+            hist_uc = (
+                alt.Chart(user_cnt_df)
+                .mark_bar(color="#45B7D1", opacity=0.85)
+                .encode(
+                    x=alt.X("평점 수:Q", bin=alt.Bin(maxbins=25),
+                            title="사용자당 평점 수"),
+                    y=alt.Y("count()", title="사용자 수"),
+                    tooltip=[alt.Tooltip("평점 수:Q", bin=alt.Bin(maxbins=25)), "count()"],
+                )
+                .properties(height=260)
+            )
+            st.altair_chart(hist_uc, use_container_width=True)
+
+        st.divider()
+
+        # ── 섹션 4: Severity → 기능 매핑 룰 ──
+        st.markdown("### 🗺️ Severity → 기능 매핑 룰")
         map_rows = []
         for sev, funcs in SEVERITY_FUNCTION_MAP.items():
             map_rows.append({
@@ -879,19 +1057,6 @@ def main():
                 ),
             })
         st.table(pd.DataFrame(map_rows))
-
-        st.divider()
-        st.write("**사용자 피부 점수 분포 (Kaggle 15,000명)**")
-        sev_stats = users[SEVERITY_COLS].describe().T.reset_index()
-        sev_stats.columns = ["컬럼"] + list(sev_stats.columns[1:])
-        sev_stats["피부 문제"] = sev_stats["컬럼"].map(SEVERITY_LABELS)
-        st.dataframe(
-            sev_stats[["피부 문제", "mean", "std", "min", "50%", "max"]]
-            .rename(columns={"mean": "평균", "std": "표준편차",
-                             "min": "최솟값", "50%": "중앙값", "max": "최댓값"})
-            .set_index("피부 문제"),
-            use_container_width=True,
-        )
 
 
 if __name__ == "__main__":
