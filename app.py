@@ -384,7 +384,6 @@ def run_evaluation(users_df, inter_df, products_df, knn_mdl, scaler,
         row = {"모델": MODEL_LABELS[m]}
         for k in k_list:
             row[f"Precision@{k}"] = round(hits[m][k] / t, 4)
-            row[f"Recall@{k}"]    = round(hits[m][k] / t, 4)
             row[f"NDCG@{k}"]      = round(ndcg[m][k] / t, 4)
         row["Category Coverage"] = round(len(cat_cov[m]) / len(CATEGORIES), 3)
         rows.append(row)
@@ -625,21 +624,125 @@ def main():
     # TAB 2 : 성능 비교
     # ══════════════════════════════════════
     with tab_eval:
-        st.subheader("모델 성능 비교 (Leave-one-out Evaluation)")
+        st.subheader("모델 성능 평가")
+
+        # ── 섹션 A: 추천 품질 평가 (올리브영 기준) ──────────────────
+        st.markdown("### 🌿 추천 품질 평가 (올리브영 기준)")
+        st.caption(
+            "정답(ground truth) 없이도 측정 가능한 3가지 지표. "
+            "추천받기 탭에서 먼저 추천을 받으면 자동으로 계산됩니다."
+        )
+
+        with st.expander("📌 지표 설명", expanded=True):
+            st.markdown("""
+| 지표 | 설명 | 의미 |
+|---|---|---|
+| **기능 적합도** | 추천 제품 기능이 사용자 피부 고민과 일치하는 비율 | 높을수록 피부 고민에 맞는 추천 |
+| **올리브영 품질 점수** | 추천 제품 평균 평점 / DB 전체 평균 평점 | 1.0 이상이면 평균보다 좋은 제품 추천 |
+| **카테고리 커버리지** | 5개 카테고리 중 추천된 카테고리 수 | 1.0이면 5단계 루틴 완성 |
+
+> **교수님 질문에 대한 답변:** 이 시스템은 정답이 정해진 문제가 아닙니다.
+> 올리브영 추천 품질은 위 3가지 지표로 평가하고,
+> 유사 사용자 탐색 정확도는 아래 섹션 B에서 캐글 데이터로 별도 검증합니다.
+            """)
+
+        if "last_recs" in st.session_state and "last_scores" in st.session_state:
+            recs_eval = st.session_state["last_recs"]
+            user_scores_eval = st.session_state["last_scores"]
+
+            # 지표 1: 기능 적합도
+            user_weights_eval = get_user_weights(user_scores_eval)
+            top_funcs_eval = set(
+                sorted(user_weights_eval, key=user_weights_eval.get, reverse=True)[:3]
+            )
+            func_scores = []
+            for rec in recs_eval:
+                prod_funcs = set(
+                    f.strip() for f in str(rec["functions"]).split("|") if f.strip()
+                )
+                overlap = len(top_funcs_eval & prod_funcs)
+                func_scores.append(overlap / len(top_funcs_eval) if top_funcs_eval else 0)
+            func_relevance = round(float(np.mean(func_scores)), 3) if func_scores else 0.0
+
+            # 지표 2: 올리브영 품질 점수
+            valid_ratings = [
+                r["avg_rating"] for r in recs_eval if pd.notna(r["avg_rating"])
+            ]
+            avg_rec_rating = float(np.mean(valid_ratings)) if valid_ratings else 0.0
+            db_avg_rating = float(products["평균 평점"].mean())
+            oy_quality = round(avg_rec_rating / db_avg_rating, 3) if db_avg_rating > 0 else 0.0
+
+            # 지표 3: 카테고리 커버리지
+            covered_cats = len(set(r["category"] for r in recs_eval))
+            cat_coverage = round(covered_cats / len(CATEGORIES), 3)
+
+            q1, q2, q3 = st.columns(3)
+            q1.metric(
+                "기능 적합도",
+                f"{func_relevance:.3f}",
+                help="추천 제품 기능이 피부 고민과 일치하는 비율 (0~1, 높을수록 좋음)",
+            )
+            q2.metric(
+                "올리브영 품질 점수",
+                f"{oy_quality:.3f}",
+                f"DB 평균 대비 {'+' if oy_quality >= 1 else ''}{(oy_quality - 1) * 100:.1f}%",
+                help="추천 제품 평균 평점 / 전체 DB 평균 평점 (1.0 이상이면 평균 이상 품질)",
+            )
+            q3.metric(
+                "카테고리 커버리지",
+                f"{cat_coverage:.1%}",
+                f"{covered_cats}/5개 카테고리",
+                help="5단계 루틴이 얼마나 완성되었는지 (1.0 = 완전한 루틴)",
+            )
+
+            with st.expander("세부 내역 보기"):
+                detail_rows = []
+                for rec in recs_eval:
+                    prod_funcs = set(
+                        f.strip() for f in str(rec["functions"]).split("|") if f.strip()
+                    )
+                    overlap = len(top_funcs_eval & prod_funcs)
+                    nm = rec["name"]
+                    detail_rows.append({
+                        "카테고리": rec["category"],
+                        "추천 제품": nm[:22] + "..." if len(nm) > 22 else nm,
+                        "기능 일치": f"{overlap}/{len(top_funcs_eval)}",
+                        "올리브영 평점": (
+                            f"{rec['avg_rating']:.2f}" if pd.notna(rec["avg_rating"]) else "-"
+                        ),
+                        "최종 점수": f"{rec['final_score']:.3f}",
+                    })
+                st.dataframe(pd.DataFrame(detail_rows), use_container_width=True)
+        else:
+            st.info(
+                "💡 먼저 '🎯 추천받기' 탭에서 추천을 받으면 품질 지표가 자동으로 계산됩니다."
+            )
+
+        st.divider()
+
+        # ── 섹션 B: 유사 사용자 탐색 정확도 (캐글 내부 검증) ──────────
+        st.markdown("### 🔬 유사 사용자 탐색 정확도 (캐글 내부 검증)")
+        st.caption(
+            "캐글 15,000명 데이터 내부에서 유사 사용자를 얼마나 정확히 찾는지 검증합니다. "
+            "올리브영 추천 품질 평가(섹션 A)와는 별개입니다."
+        )
 
         with st.expander("📌 평가 방법 안내", expanded=False):
             st.markdown("""
 - **Leave-one-out**: 각 Kaggle 사용자의 최고 평점 제품을 hold-out 후 추천
 - **유효 제품**: 올리브영 DB(601개)에 매칭된 Product_ID만 대상
-- **Precision@K / Recall@K**: 상위 K개 중 hold-out 포함 비율 (binary relevance)
+- **Precision@K**: 상위 K개 추천 중 hold-out 제품이 포함된 비율
 - **NDCG@K**: 순위 가중 평가 지표 (`1/log₂(rank+1)`)
 - **Category Coverage**: 추천된 고유 카테고리 수 / 전체 카테고리(5개)
+- **한계**: 캐글 데이터 기반 검증이므로 올리브영 추천 품질과 직접 연결되지 않음
             """)
 
         col_n, col_btn = st.columns([2, 1])
         with col_n:
-            n_eval = st.slider("평가 사용자 수", 50, 500, 200, 50,
-                               help="많을수록 정확하지만 시간이 걸립니다")
+            n_eval = st.slider(
+                "평가 사용자 수", 50, 500, 200, 50,
+                help="많을수록 정확하지만 시간이 걸립니다",
+            )
         with col_btn:
             st.write(""); st.write("")
             eval_btn = st.button("▶ 평가 실행", type="primary")
@@ -658,12 +761,11 @@ def main():
                 use_container_width=True,
             )
 
-            # NDCG 막대 차트
             import altair as alt
             ndcg_cols = [c for c in mdf.columns if "NDCG" in c]
             melted = mdf[["모델"] + ndcg_cols].melt(
                 id_vars="모델", value_vars=ndcg_cols,
-                var_name="지표", value_name="NDCG"
+                var_name="지표", value_name="NDCG",
             )
             chart = (
                 alt.Chart(melted)
@@ -685,11 +787,10 @@ def main():
             )
             st.altair_chart(chart, use_container_width=True)
 
-            # Precision 비교
             prec_cols = [c for c in mdf.columns if "Precision" in c]
             melted_p = mdf[["모델"] + prec_cols].melt(
                 id_vars="모델", value_vars=prec_cols,
-                var_name="지표", value_name="Precision"
+                var_name="지표", value_name="Precision",
             )
             chart_p = (
                 alt.Chart(melted_p)
