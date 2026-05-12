@@ -540,24 +540,86 @@ def main():
 
                 if uploaded is not None:
                     st.image(uploaded, caption="업로드된 사진", use_container_width=True)
+
                     with st.spinner("AI 피부 분석 중..."):
                         image_bytes = uploaded.read()
-                        user_scores = infer_skin_scores(image_bytes)
+                        inferred = infer_skin_scores(image_bytes)
 
                     st.success("분석 완료!")
                     st.divider()
-                    for col in SEVERITY_COLS:
+
+                    # AI 자동 추론 결과 표시 (Acne, Aging, Pigmentation)
+                    st.markdown("**🤖 AI 분석 결과**")
+                    auto_cols = [
+                        "Acne_Severity",
+                        "Aging_Severity",
+                        "Pigmentation_Severity",
+                    ]
+                    for col in auto_cols:
                         emoji = SEVERITY_EMOJI[col]
                         label = SEVERITY_LABELS[col]
-                        val   = user_scores[col]
-                        bar_w = min(10, int(val * 10 / 10))
+                        val = inferred[col]
+                        bar_w = min(10, int(val))
                         st.markdown(
                             f"**{emoji} {label}** `{val:.2f}` "
                             f"{'█' * bar_w}{'░' * (10 - bar_w)}"
                         )
+
+                    st.divider()
+
+                    # 설문 2개: Dryness + Sensitivity
+                    st.markdown("**📋 피부 상태 설문** (본인이 더 잘 아는 항목)")
+
+                    dryness_opt = st.radio(
+                        "💧 피부 건조함이 어느 정도인가요?",
+                        ["거의 없음", "가끔 당김", "자주 당김", "항상 건조"],
+                        horizontal=True,
+                        help="세안 후 또는 낮 동안 피부가 당기는 정도를 선택하세요",
+                    )
+                    dryness_map = {
+                        "거의 없음": 1.0,
+                        "가끔 당김": 3.5,
+                        "자주 당김": 6.5,
+                        "항상 건조": 9.0,
+                    }
+                    dryness_val = dryness_map[dryness_opt]
+
+                    sens_opt = st.radio(
+                        "🌿 민감성 피부인가요?",
+                        ["아니오", "예"],
+                        horizontal=True,
+                        help="외부 자극(향, 성분 등)에 쉽게 반응하거나 붉어지는 편인지 선택하세요",
+                    )
+                    sens_val = 6.49 if sens_opt == "예" else 0.0
+
+                    # 최종 user_scores 조합
+                    user_scores = {
+                        "Acne_Severity":         inferred["Acne_Severity"],
+                        "Dryness_Severity":      dryness_val,
+                        "Aging_Severity":        inferred["Aging_Severity"],
+                        "Pigmentation_Severity": inferred["Pigmentation_Severity"],
+                        "Sensitivity_Severity":  sens_val,
+                    }
+
+                    # 최종 입력값 요약 표시
+                    st.divider()
+                    st.markdown("**✅ 최종 입력값 요약**")
+                    for col in SEVERITY_COLS:
+                        emoji = SEVERITY_EMOJI[col]
+                        label = SEVERITY_LABELS[col]
+                        val = user_scores[col]
+                        source = "🤖 AI" if col in auto_cols else "📋 설문"
+                        bar_w = min(10, int(val))
+                        st.markdown(
+                            f"{source} **{emoji} {label}** `{val:.2f}` "
+                            f"{'█' * bar_w}{'░' * (10 - bar_w)}"
+                        )
+
                 else:
-                    st.info("jpg 또는 png 파일을 업로드하면 AI가 피부를 자동 분석합니다.")
-                    # 사진이 없으면 추천 버튼 비활성화를 위해 기본값 설정
+                    st.info(
+                        "jpg 또는 png 파일을 업로드하면 AI가 자동으로 피부를 분석하고, "
+                        "건조함·민감성은 간단한 설문으로 입력할 수 있습니다."
+                    )
                     user_scores = {c: 0.0 for c in SEVERITY_COLS}
 
             st.divider()
