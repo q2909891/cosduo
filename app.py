@@ -158,7 +158,6 @@ def build_knn(_users_df):
 # 2-b. 피부 분석 딥러닝 모델 로드
 # ─────────────────────────────────────────────
 REGRESSOR_PATH  = "results/resnet50_final.pth"
-CLASSIFIER_PATH = "results/sensitivity_cls_mobilenet_v3.pth"
 
 _IMG_TRANSFORM = T.Compose([
     T.Resize((224, 224)),
@@ -168,9 +167,7 @@ _IMG_TRANSFORM = T.Compose([
 
 @st.cache_resource
 def load_skin_models():
-    """ResNet50 회귀 + MobileNetV3-Large 분류 모델 로드 (CPU)"""
-    # 회귀 모델: fc = Sequential(Linear(2048,256), ReLU, Dropout, Linear(256,5))
-    # 출력 5개 중 앞 4개 사용: Acne / Dryness / Aging / Pigmentation
+    """ResNet50 회귀 모델 로드 (CPU) — Acne / Aging / Pigmentation 3개 추론"""
     reg = tvmodels.resnet50()
     reg.fc = nn.Sequential(
         nn.Linear(2048, 256),
@@ -182,40 +179,23 @@ def load_skin_models():
         torch.load(REGRESSOR_PATH, map_location="cpu", weights_only=False)
     )
     reg.eval()
-
-    # 분류 모델: MobileNetV3-Large, classifier[3] 교체
-    # classifier[3] = Sequential(Linear(1280,128), ReLU, Dropout, Linear(128,2))
-    cls = tvmodels.mobilenet_v3_large()
-    cls.classifier[3] = nn.Sequential(
-        nn.Linear(1280, 128),
-        nn.ReLU(),
-        nn.Dropout(p=0.2),
-        nn.Linear(128, 2),
-    )
-    cls.load_state_dict(
-        torch.load(CLASSIFIER_PATH, map_location="cpu", weights_only=False)
-    )
-    cls.eval()
-
-    return reg, cls
+    return reg
 
 
 def infer_skin_scores(image_bytes: bytes) -> dict:
-    """업로드 이미지 → 피부 severity 5개 수치 반환"""
-    reg, cls = load_skin_models()
+    """업로드 이미지 → Acne / Aging / Pigmentation 3개 수치 반환
+    Dryness와 Sensitivity는 설문으로 입력받으므로 여기서 추론하지 않음"""
+    reg = load_skin_models()
     img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    x = _IMG_TRANSFORM(img).unsqueeze(0)          # (1, 3, 224, 224)
+    x = _IMG_TRANSFORM(img).unsqueeze(0)
 
     with torch.no_grad():
-        reg_out = reg(x).squeeze().tolist()        # [Acne, Dryness, Aging, Pigmentation]
-        cls_pred = int(cls(x).argmax(dim=1).item()) # 0 or 1
+        reg_out = reg(x).squeeze().tolist()  # [Acne, Dryness, Aging, Pigmentation, ...]
 
     return {
         "Acne_Severity":         float(np.clip(reg_out[0], 0.0, 10.0)),
-        "Dryness_Severity":      float(np.clip(reg_out[1], 0.0, 10.0)),
         "Aging_Severity":        float(np.clip(reg_out[2], 0.0,  4.2)),
         "Pigmentation_Severity": float(np.clip(reg_out[3], 0.0,  6.0)),
-        "Sensitivity_Severity":  6.49 if cls_pred == 1 else 0.0,
     }
 
 
