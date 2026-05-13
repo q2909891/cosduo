@@ -458,7 +458,7 @@ def main():
             st.subheader("피부 상태 입력")
             input_mode = st.radio(
                 "입력 방법",
-                ["슬라이더 직접 입력", "데이터셋에서 선택", "📷 얼굴 사진으로 분석"],
+                ["슬라이더 직접 입력", "📷 얼굴 사진으로 분석"],
                 horizontal=True,
             )
 
@@ -481,38 +481,7 @@ def main():
                             help="0: 없음 · 5: 보통 · 10: 심각",
                         )
 
-            elif input_mode == "데이터셋에서 선택":
-                valid_y = y_labels.dropna(subset=SEVERITY_COLS)
-                sample_y = valid_y.sample(min(200, len(valid_y)), random_state=42)
-
-                def _label(row):
-                    age = f"{row['age']:.0f}세" if pd.notna(row.get("age")) else "?세"
-                    return (
-                        f"ID {row['image_id']} | {age} | "
-                        f"여드름{row['Acne_Severity']:.1f} "
-                        f"건조{row['Dryness_Severity']:.1f} "
-                        f"노화{row['Aging_Severity']:.1f}"
-                    )
-
-                opts = [_label(r) for _, r in sample_y.iterrows()]
-                sel_idx = st.selectbox("사용자 선택", range(len(opts)),
-                                       format_func=lambda i: opts[i])
-                sel_row = sample_y.iloc[sel_idx]
-                user_scores = {c: float(sel_row.get(c, 0) or 0)
-                               for c in SEVERITY_COLS}
-
-                st.divider()
-                for col in SEVERITY_COLS:
-                    emoji = SEVERITY_EMOJI[col]
-                    label = SEVERITY_LABELS[col]
-                    val   = user_scores[col]
-                    bar_w = min(10, int(val))
-                    st.markdown(
-                        f"**{emoji} {label}** `{val:.1f}` "
-                        f"{'█' * bar_w}{'░' * (10 - bar_w)}"
-                    )
-
-            else:  # 📷 얼굴 사진으로 분석
+            elif input_mode == "📷 얼굴 사진으로 분석":
                 uploaded = st.file_uploader(
                     "얼굴 사진 업로드 (jpg / png)",
                     type=["jpg", "jpeg", "png"],
