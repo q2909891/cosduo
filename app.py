@@ -11,6 +11,8 @@ from sklearn.preprocessing import MinMaxScaler, LabelEncoder
 from sklearn.ensemble import RandomForestClassifier
 import glob
 import io
+import pickle
+import os
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -184,9 +186,23 @@ def build_knn(_users_df):
     feat_df = _users_df[KNN_FEATURE_COLS].fillna(0)
     scaler = MinMaxScaler()
     X = scaler.fit_transform(feat_df)
-    knn = NearestNeighbors(n_neighbors=10, metric="cosine", algorithm="brute")
+    knn = NearestNeighbors(n_neighbors=5, metric="cosine", algorithm="brute")
     knn.fit(X)
     return knn, scaler
+
+
+# ─────────────────────────────────────────────
+# 2-c. SVD 모델 로드 (넷플릭스 방식 행렬 분해)
+# ─────────────────────────────────────────────
+SVD_PATH = "results/svd_model.pkl"
+
+@st.cache_resource
+def load_svd_model():
+    """코랩에서 학습한 SVD 모델 로드"""
+    if not os.path.exists(SVD_PATH):
+        return None
+    with open(SVD_PATH, "rb") as f:
+        return pickle.load(f)
 
 
 # ─────────────────────────────────────────────
@@ -294,6 +310,44 @@ def knn_product_scores(user_scores: dict, users_df, knn_mdl, scaler, inter_df) -
     return nb_inter.groupby("Product_ID")["User_Rating"].mean().to_dict()
 
 
+def svd_product_scores(user_scores: dict, users_df, svd_model: dict,
+                       knn_mdl, scaler) -> dict:
+    """SVD 모델로 유사 사용자 찾기 → SVD 예측 평점 반환"""
+    if svd_model is None:
+        return {}
+    feat_vals = []
+    for col in KNN_FEATURE_COLS:
+        if col in user_scores:
+            feat_vals.append(float(user_scores.get(col, 0)))
+        elif col == "Age":
+            feat_vals.append(float(user_scores.get("age_input", 30)))
+        elif col == "gender":
+            feat_vals.append(float(user_scores.get("gender_input", 0)))
+        elif col == "Climate_enc":
+            feat_vals.append(float(user_scores.get("climate_enc", 0)))
+        elif col == "Diet_enc":
+            feat_vals.append(float(user_scores.get("diet_enc", 0)))
+        else:
+            feat_vals.append(0.0)
+    feat = np.array([feat_vals])
+    feat_sc = scaler.transform(feat)
+    _, idx = knn_mdl.kneighbors(feat_sc)
+    neighbor_ids = users_df.iloc[idx[0]]["User_ID"].tolist()
+    scores = {}
+    valid_count = 0
+    for uid in neighbor_ids:
+        if uid not in svd_model["user_idx"]:
+            continue
+        u_i = svd_model["user_idx"][uid]
+        valid_count += 1
+        for pid, p_i in svd_model["prod_idx"].items():
+            pred = float(svd_model["pred_matrix"][u_i, p_i])
+            scores[pid] = scores.get(pid, 0.0) + pred
+    if valid_count > 0:
+        scores = {pid: v / valid_count for pid, v in scores.items()}
+    return scores
+
+
 # ─────────────────────────────────────────────
 # 5. 하이브리드 추천 엔진
 # ─────────────────────────────────────────────
@@ -304,13 +358,14 @@ def recommend(
     knn_mdl,
     scaler,
     inter_df: pd.DataFrame,
-    alpha: float = 0.5,   # 기능매칭
-    beta: float = 0.3,    # KNN평점
+    alpha: float = 0.3,   # 기능매칭
+    beta: float = 0.5,    # KNN/SVD평점
     gamma: float = 0.2,   # 올리브영평점
     model_type: str = "hybrid",
     top_candidates: int = 3,
+    svd_model=None,
 ):
-    """카테고리별 상위 top_candidates 후보 중 최고 점수 1개 반환, 총 5개"""
+    """카테고리별 상위 top_candidates 후보 반환"""
     user_weights = get_user_weights(user_scores)
     df = products_df.copy()
 
@@ -327,12 +382,28 @@ def recommend(
     else:
         df["knn_score"] = 0.0
 
+    # SVD 점수 (0~1)
+    if model_type in ("svd", "hybrid_svd") and svd_model is not None:
+        svd_sc = svd_product_scores(user_scores, users_df, svd_model, knn_mdl, scaler)
+        max_svd = max(svd_sc.values()) if svd_sc else 1.0
+        df["svd_score"] = df["Product_ID"].map(svd_sc).fillna(0) / (max_svd or 1.0)
+    else:
+        df["svd_score"] = 0.0
+
     # 최종 점수
     if model_type == "content":
         df["final_score"] = df["feat_score"]
     elif model_type == "knn":
         df["final_score"] = df["knn_score"]
-    else:  # hybrid
+    elif model_type == "svd":
+        df["final_score"] = df["svd_score"]
+    elif model_type == "hybrid_svd":
+        df["final_score"] = (
+            alpha * df["feat_score"] +
+            beta  * df["svd_score"] +
+            gamma * df["oy_norm"]
+        )
+    else:  # hybrid (KNN 기반)
         df["final_score"] = (
             alpha * df["feat_score"] +
             beta  * df["knn_score"] +
@@ -354,7 +425,7 @@ def recommend(
                 "brand":       str(best["올리브영 브랜드"]),
                 "functions":   str(best["기능(Function)"]),
                 "feat_score":  round(float(best["feat_score"]), 4),
-                "knn_score":   round(float(best["knn_score"]), 4),
+                "knn_score":   round(float(best.get("knn_score", 0)), 4),
                 "oy_score":    round(float(best["oy_norm"]), 4),
                 "final_score": round(float(best["final_score"]), 4),
                 "price":       best["할인가(원)"],
@@ -368,21 +439,24 @@ def recommend(
 # 6. Leave-one-out 평가
 # ─────────────────────────────────────────────
 def run_evaluation(users_df, inter_df, products_df, knn_mdl, scaler,
-                   n_eval: int = 200, k_list=(1, 3, 5), test_k_values=False):
-    """Content-based / KNN only / Hybrid 3모델 비교"""
+                   n_eval: int = 200, k_list=(1, 3, 5),
+                   test_k_values=False, svd_model=None):
+    """Content-based / KNN / Hybrid / SVD / Hybrid_SVD 5모델 비교"""
     valid_pids = set(products_df["Product_ID"].tolist())
     inter_v = inter_df[inter_df["Product_ID"].isin(valid_pids)].copy()
 
-    # 유효 interaction ≥ 2인 사용자 샘플링
     cnt = inter_v.groupby("User_ID").size()
     eligible = cnt[cnt >= 2].index.tolist()
     np.random.seed(42)
     sample = np.random.choice(eligible, min(n_eval, len(eligible)), replace=False)
 
     models = ["content", "knn", "hybrid"]
-    hits = {m: {k: 0   for k in k_list} for m in models}
-    ndcg = {m: {k: 0.0 for k in k_list} for m in models}
-    total = {m: 0 for m in models}
+    if svd_model is not None:
+        models += ["svd", "hybrid_svd"]
+
+    hits    = {m: {k: 0   for k in k_list} for m in models}
+    ndcg    = {m: {k: 0.0 for k in k_list} for m in models}
+    total   = {m: 0 for m in models}
     cat_cov = {m: set() for m in models}
 
     users_idx = users_df.set_index("User_ID")
@@ -408,7 +482,8 @@ def run_evaluation(users_df, inter_df, products_df, knn_mdl, scaler,
         for model in models:
             recs, score_df = recommend(
                 u_scores, products_df, users_df, knn_mdl, scaler, inter_df,
-                model_type=model
+                model_type=model,
+                svd_model=svd_model,
             )
             all_ranked = score_df.nlargest(max(k_list), "final_score")["Product_ID"].tolist()
 
@@ -424,7 +499,13 @@ def run_evaluation(users_df, inter_df, products_df, knn_mdl, scaler,
 
     pbar.empty()
 
-    MODEL_LABELS = {"content": "Content-based", "knn": "KNN Only", "hybrid": "하이브리드"}
+    MODEL_LABELS = {
+        "content":    "Content-based",
+        "knn":        "KNN Only",
+        "hybrid":     "하이브리드 (KNN)",
+        "svd":        "SVD Only",
+        "hybrid_svd": "하이브리드 (SVD)",
+    }
     rows = []
     for m in models:
         t = total[m] or 1
@@ -503,13 +584,14 @@ def render_card(rec: dict):
 def main():
     st.title("🧴 COSDUO — 얼굴 이미지 기반 스킨케어 루틴 추천")
     st.caption(
-        "ResNet50 피부 분석 → 하이브리드 추천 (기능매칭 50% + KNN 30% + 올리브영 평점 20%) | "
+        "ResNet50 피부 분석 → 하이브리드 추천 (기능매칭 30% + KNN 50% + 올리브영 평점 20%) | "
         "이화여자대학교 데이터사이언스대학원 DUO COS"
     )
 
     with st.spinner("데이터 로딩 중..."):
         users, inter, y_labels, products = load_data()
         knn_mdl, scaler = build_knn(users)
+        svd_mdl = load_svd_model()
 
     tab_rec, tab_eval, tab_data = st.tabs(
         ["🎯 추천받기", "📊 성능 비교", "📈 EDA / 데이터 분석"]
@@ -694,11 +776,13 @@ def main():
             st.divider()
             model_type = st.selectbox(
                 "모델",
-                ["hybrid", "content", "knn"],
+                ["hybrid", "hybrid_svd", "knn", "svd", "content"],
                 format_func=lambda x: {
-                    "hybrid":  "⚡ 하이브리드 (권장)",
-                    "content": "🔍 Content-based (기능 매칭만)",
-                    "knn":     "👥 KNN (협업 필터링만)",
+                    "hybrid":     "⚡ 하이브리드 KNN (기능매칭 30% + KNN 50% + 올리브영 20%)",
+                    "hybrid_svd": "🎬 하이브리드 SVD (넷플릭스 방식)",
+                    "knn":        "👥 KNN Only",
+                    "svd":        "🔢 SVD Only",
+                    "content":    "🧴 기능매칭 Only",
                 }[x],
             )
             show_top3 = st.checkbox(
@@ -717,6 +801,7 @@ def main():
                         user_scores, products, users, knn_mdl, scaler, inter,
                         model_type=model_type,
                         top_candidates=top_n,
+                        svd_model=svd_mdl,
                     )
                 st.session_state["last_recs"] = recs
                 st.session_state["last_scores"] = user_scores
@@ -744,8 +829,8 @@ def main():
 ### 추천 방식 안내
 | 구성 요소 | 가중치 | 설명 |
 |-----------|--------|------|
-| 기능 매칭 | **50%** | 피부 문제 → 필요 기능 매핑 |
-| KNN 평점  | **30%** | 유사 사용자(K=10) 평균 평점 |
+| 기능 매칭 | **30%** | 피부 문제 → 필요 기능 매핑 |
+| KNN 평점  | **50%** | 유사 사용자(K=5) 평균 평점 |
 | 올리브영 평점 | **20%** | 올리브영 평균 별점 |
 
 **추천 카테고리:** 마스크팩 · 스킨케어 · 앰플/세럼 · 크림/로션 · 선케어
@@ -887,7 +972,8 @@ def main():
         if eval_btn:
             with st.spinner("평가 실행 중... (잠시 기다려 주세요)"):
                 metrics_df = run_evaluation(
-                    users, inter, products, knn_mdl, scaler, n_eval=n_eval
+                    users, inter, products, knn_mdl, scaler,
+                    n_eval=n_eval, svd_model=svd_mdl
                 )
                 st.session_state["metrics"] = metrics_df
 
@@ -901,8 +987,9 @@ def main():
                             n_neighbors=k_val, metric="cosine", algorithm="brute"
                         )
                         knn_tmp.fit(X_tmp)
-                        m = run_evaluation(users, inter, products, knn_tmp, sc_tmp, n_eval=n_eval)
-                        hybrid_row = m[m["모델"] == "하이브리드"].iloc[0]
+                        m = run_evaluation(users, inter, products, knn_tmp, sc_tmp,
+                                           n_eval=n_eval, svd_model=svd_mdl)
+                        hybrid_row = m[m["모델"] == "하이브리드 (KNN)"].iloc[0]
                         k_results.append({
                             "K값": k_val,
                             "Precision@5": hybrid_row.get("Precision@5", 0),
