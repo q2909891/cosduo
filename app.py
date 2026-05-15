@@ -400,6 +400,10 @@ def run_evaluation(users_df, inter_df, products_df, knn_mdl, scaler,
 
         u_row = users_idx.loc[uid]
         u_scores = {c: float(u_row.get(c, 0) or 0) for c in SEVERITY_COLS}
+        u_scores["age_input"]    = float(u_row.get("Age", 30) or 30)
+        u_scores["gender_input"] = float(u_row.get("gender", 0) or 0)
+        u_scores["climate_enc"]  = float(u_row.get("Climate_enc", 0) or 0)
+        u_scores["diet_enc"]     = float(u_row.get("Diet_enc", 0) or 0)
 
         for model in models:
             recs, score_df = recommend(
@@ -551,7 +555,8 @@ def main():
                     gender_opt2 = st.radio("성별", ["여성 (0)", "남성 (1)"], horizontal=True, key="slider_gender")
                     user_scores["gender_input"] = 0.0 if "여성" in gender_opt2 else 1.0
                 with col_a2:
-                    user_scores["age_input"] = float(st.slider("연령", 15, 49, 30, 1, key="slider_age"))
+                    age_val2 = st.slider("연령", 1, 100, 30, 1, key="slider_age")
+                    user_scores["age_input"] = float(max(15, min(age_val2, 49)))
                 col_c2, col_d2 = st.columns(2)
                 with col_c2:
                     climate_opt2 = st.selectbox("거주 기후", ["summer", "Temperate", "winter", "Dry"], key="slider_climate")
@@ -630,7 +635,8 @@ def main():
                         gender_opt = st.radio("성별", ["여성 (0)", "남성 (1)"], horizontal=True)
                         gender_val = 0.0 if "여성" in gender_opt else 1.0
                     with col_a:
-                        age_val = st.slider("연령", 15, 49, 30, 1)
+                        age_val = st.slider("연령", 1, 100, 30, 1)
+                        age_knn = max(15, min(age_val, 49))
                     col_c, col_d = st.columns(2)
                     with col_c:
                         climate_opt = st.selectbox("거주 기후", ["summer", "Temperate", "winter", "Dry"])
@@ -648,7 +654,7 @@ def main():
                         "Aging_Severity":        inferred["Aging_Severity"],
                         "Pigmentation_Severity": inferred["Pigmentation_Severity"],
                         "Sensitivity_Severity":  sens_final,
-                        "age_input":             float(age_val),
+                        "age_input":             float(age_knn),
                         "gender_input":          gender_val,
                         "climate_enc":           float(climate_enc_val),
                         "diet_enc":              float(diet_enc_val),
