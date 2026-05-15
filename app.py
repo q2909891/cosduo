@@ -214,9 +214,14 @@ def load_skin_models():
     )
     reg.eval()
 
-    # MobileNetV3 — Sensitivity 이진 분류
+    # MobileNetV3 — Sensitivity 이진 분류 (학습 시 구조: Sequential(Linear→ReLU→Dropout→Linear))
     cls = tvmodels.mobilenet_v3_large()
-    cls.classifier[-1] = nn.Linear(cls.classifier[-1].in_features, 2)
+    cls.classifier[3] = nn.Sequential(
+        nn.Linear(1280, 128),
+        nn.ReLU(),
+        nn.Dropout(p=0.2),
+        nn.Linear(128, 2),
+    )
     cls.load_state_dict(
         torch.load(CLASSIFIER_PATH, map_location="cpu", weights_only=False)
     )
