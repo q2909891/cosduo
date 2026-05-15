@@ -385,8 +385,14 @@ def recommend(
     # SVD 점수 (0~1)
     if model_type in ("svd", "hybrid_svd") and svd_model is not None:
         svd_sc = svd_product_scores(user_scores, users_df, svd_model, knn_mdl, scaler)
-        max_svd = max(svd_sc.values()) if svd_sc else 1.0
-        df["svd_score"] = df["Product_ID"].map(svd_sc).fillna(0) / (max_svd or 1.0)
+        if svd_sc:
+            svd_series = df["Product_ID"].map(svd_sc)
+            min_svd = svd_series.min()
+            max_svd = svd_series.max()
+            rng = max_svd - min_svd or 1.0
+            df["svd_score"] = (svd_series - min_svd) / rng
+        else:
+            df["svd_score"] = 0.0
     else:
         df["svd_score"] = 0.0
 
