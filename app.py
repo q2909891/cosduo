@@ -1029,8 +1029,8 @@ def main():
                     color=alt.Color(
                         "모델:N",
                         scale=alt.Scale(
-                            domain=["Content-based", "KNN Only", "하이브리드"],
-                            range=["#4ECDC4", "#45B7D1", "#FF6B6B"],
+                            domain=["Content-based", "KNN Only", "하이브리드 (KNN)", "SVD Only", "하이브리드 (SVD)"],
+                            range=["#4ECDC4", "#45B7D1", "#FF6B6B", "#96CEB4", "#FFA94D"],
                         ),
                     ),
                     xOffset="모델:N",
@@ -1054,8 +1054,8 @@ def main():
                     color=alt.Color(
                         "모델:N",
                         scale=alt.Scale(
-                            domain=["Content-based", "KNN Only", "하이브리드"],
-                            range=["#4ECDC4", "#45B7D1", "#FF6B6B"],
+                            domain=["Content-based", "KNN Only", "하이브리드 (KNN)", "SVD Only", "하이브리드 (SVD)"],
+                            range=["#4ECDC4", "#45B7D1", "#FF6B6B", "#96CEB4", "#FFA94D"],
                         ),
                     ),
                     xOffset="모델:N",
