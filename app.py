@@ -722,7 +722,7 @@ def main():
                 top_funcs = sorted(u_weights, key=u_weights.get, reverse=True)[:3]
                 func_kor = " · ".join(FUNCTION_KOR.get(f, f) for f in top_funcs)
                 scores = st.session_state["last_scores"]
-                non_sens = {k: v for k, v in scores.items() if k != "Sensitivity_Severity"}
+                non_sens = {k: v for k, v in scores.items() if k in SEVERITY_COLS and k != "Sensitivity_Severity"}
                 main_concern = max(non_sens, key=non_sens.get)
                 sens_str = " | 🌿 민감성 피부" if scores.get("Sensitivity_Severity", 0) > 0 else ""
                 st.info(
