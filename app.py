@@ -7,7 +7,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import MinMaxScaler, LabelEncoder
+from sklearn.ensemble import RandomForestClassifier
 import glob
 import io
 import warnings
@@ -89,6 +90,13 @@ FUNCTION_KOR = {
     "Exfoliation":  "각질케어",
 }
 
+# KNN에 사용할 전체 피처 (Severity 5개 + 라이프스타일)
+KNN_FEATURE_COLS = [
+    "Acne_Severity", "Dryness_Severity", "Aging_Severity",
+    "Pigmentation_Severity", "Sensitivity_Severity",
+    "Age", "gender", "Climate_enc", "Diet_enc"
+]
+
 CATEGORIES = ["마스크팩", "스킨케어", "앰플_세럼", "크림_로션", "선케어"]
 CAT_DISPLAY = {
     "마스크팩":  "마스크팩 🎭",
@@ -119,6 +127,32 @@ def load_data():
     users = pd.read_csv("users.csv", low_memory=False)
     users[SEVERITY_COLS] = users[SEVERITY_COLS].fillna(0)
 
+    # ── gender 결측값 Random Forest로 채우기 ──────────────────
+    CAT_COLS_FOR_GENDER = ["Skin_Type", "Climate", "Diet", "Hormonal_Status", "Budget_Level"]
+    GENDER_FEATURES = CAT_COLS_FOR_GENDER + [
+        "Age", "Acne_Severity", "Dryness_Severity", "Aging_Severity",
+        "Pigmentation_Severity", "Sensitivity_Severity"
+    ]
+    _le = {}
+    users_enc = users.copy()
+    for col in CAT_COLS_FOR_GENDER:
+        _le[col] = LabelEncoder()
+        users_enc[col + "_enc"] = _le[col].fit_transform(users_enc[col].astype(str))
+    feat_cols = [c + "_enc" if c in CAT_COLS_FOR_GENDER else c for c in GENDER_FEATURES]
+    has_g = users_enc[users_enc["gender"].notna()]
+    no_g  = users_enc[users_enc["gender"].isna()]
+    if len(no_g) > 0:
+        rf_gender = RandomForestClassifier(n_estimators=100, random_state=42)
+        rf_gender.fit(has_g[feat_cols], has_g["gender"])
+        users.loc[users["gender"].isna(), "gender"] = rf_gender.predict(no_g[feat_cols])
+    users["gender"] = users["gender"].fillna(0).astype(float)
+    # ──────────────────────────────────────────────────────────
+
+    # Climate, Diet 인코딩 (KNN 피처용)
+    for col in ["Climate", "Diet"]:
+        le_knn = LabelEncoder()
+        users[col + "_enc"] = le_knn.fit_transform(users[col].astype(str))
+
     inter = pd.read_csv("interactions.csv", encoding="cp949",
                         usecols=[0, 1, 2], low_memory=False)
     inter.columns = ["User_ID", "Product_ID", "User_Rating"]
@@ -146,11 +180,12 @@ def load_data():
 # ─────────────────────────────────────────────
 @st.cache_resource
 def build_knn(_users_df):
-    feats = _users_df[SEVERITY_COLS].fillna(0).values
+    """KNN 모델 구축 — Severity 5개 + Age + gender + Climate + Diet"""
+    feat_df = _users_df[KNN_FEATURE_COLS].fillna(0)
     scaler = MinMaxScaler()
-    feats_scaled = scaler.fit_transform(feats)
+    X = scaler.fit_transform(feat_df)
     knn = NearestNeighbors(n_neighbors=10, metric="cosine", algorithm="brute")
-    knn.fit(feats_scaled)
+    knn.fit(X)
     return knn, scaler
 
 
@@ -158,6 +193,7 @@ def build_knn(_users_df):
 # 2-b. 피부 분석 딥러닝 모델 로드
 # ─────────────────────────────────────────────
 REGRESSOR_PATH  = "results/resnet50_final.pth"
+CLASSIFIER_PATH = "results/sensitivity_cls_mobilenet_v3.pth"
 
 _IMG_TRANSFORM = T.Compose([
     T.Resize((224, 224)),
@@ -167,35 +203,43 @@ _IMG_TRANSFORM = T.Compose([
 
 @st.cache_resource
 def load_skin_models():
-    """ResNet50 회귀 모델 로드 (CPU) — Acne / Aging / Pigmentation 3개 추론"""
+    """ResNet50 회귀 + MobileNetV3 분류 모델 로드"""
+    # ResNet50 — 회귀 (Acne, Dryness, Aging, Pigmentation)
     reg = tvmodels.resnet50()
     reg.fc = nn.Sequential(
-        nn.Linear(2048, 256),
-        nn.ReLU(),
-        nn.Dropout(p=0.2),
-        nn.Linear(256, 5),
+        nn.Linear(2048, 256), nn.ReLU(), nn.Dropout(p=0.2), nn.Linear(256, 5)
     )
     reg.load_state_dict(
         torch.load(REGRESSOR_PATH, map_location="cpu", weights_only=False)
     )
     reg.eval()
-    return reg
+
+    # MobileNetV3 — Sensitivity 이진 분류
+    cls = tvmodels.mobilenet_v3_large()
+    cls.classifier[-1] = nn.Linear(cls.classifier[-1].in_features, 2)
+    cls.load_state_dict(
+        torch.load(CLASSIFIER_PATH, map_location="cpu", weights_only=False)
+    )
+    cls.eval()
+    return reg, cls
 
 
 def infer_skin_scores(image_bytes: bytes) -> dict:
-    """업로드 이미지 → Acne / Aging / Pigmentation 3개 수치 반환
-    Dryness와 Sensitivity는 설문으로 입력받으므로 여기서 추론하지 않음"""
-    reg = load_skin_models()
+    """업로드 이미지 → Severity AI 추론값 반환 (설문과 결합 전 단계)"""
+    reg, cls = load_skin_models()
     img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     x = _IMG_TRANSFORM(img).unsqueeze(0)
 
     with torch.no_grad():
-        reg_out = reg(x).squeeze().tolist()  # [Acne, Dryness, Aging, Pigmentation, ...]
+        reg_out = reg(x).squeeze().tolist()
+        cls_pred = int(cls(x).argmax(dim=1).item())
 
     return {
         "Acne_Severity":         float(np.clip(reg_out[0], 0.0, 10.0)),
+        "Dryness_AI":            float(np.clip(reg_out[1], 0.0, 10.0)),
         "Aging_Severity":        float(np.clip(reg_out[2], 0.0,  4.2)),
         "Pigmentation_Severity": float(np.clip(reg_out[3], 0.0,  6.0)),
+        "Sensitivity_AI":        6.49 if cls_pred == 1 else 0.0,
     }
 
 
@@ -223,7 +267,21 @@ def feature_match_score(func_str, user_weights: dict) -> float:
 # 4. KNN 평점 예측
 # ─────────────────────────────────────────────
 def knn_product_scores(user_scores: dict, users_df, knn_mdl, scaler, inter_df) -> dict:
-    feat = np.array([[float(user_scores.get(c, 0)) for c in SEVERITY_COLS]])
+    feat_vals = []
+    for col in KNN_FEATURE_COLS:
+        if col in user_scores:
+            feat_vals.append(float(user_scores.get(col, 0)))
+        elif col == "Age":
+            feat_vals.append(float(user_scores.get("age_input", 30)))
+        elif col == "gender":
+            feat_vals.append(float(user_scores.get("gender_input", 0)))
+        elif col == "Climate_enc":
+            feat_vals.append(float(user_scores.get("climate_enc", 0)))
+        elif col == "Diet_enc":
+            feat_vals.append(float(user_scores.get("diet_enc", 0)))
+        else:
+            feat_vals.append(0.0)
+    feat = np.array([feat_vals])
     feat_sc = scaler.transform(feat)
     _, idx = knn_mdl.kneighbors(feat_sc)
     neighbor_ids = users_df.iloc[idx[0]]["User_ID"].tolist()
@@ -305,7 +363,7 @@ def recommend(
 # 6. Leave-one-out 평가
 # ─────────────────────────────────────────────
 def run_evaluation(users_df, inter_df, products_df, knn_mdl, scaler,
-                   n_eval: int = 200, k_list=(1, 3, 5)):
+                   n_eval: int = 200, k_list=(1, 3, 5), test_k_values=False):
     """Content-based / KNN only / Hybrid 3모델 비교"""
     valid_pids = set(products_df["Product_ID"].tolist())
     inter_v = inter_df[inter_df["Product_ID"].isin(valid_pids)].copy()
@@ -481,6 +539,24 @@ def main():
                             help="0: 없음 · 5: 보통 · 10: 심각",
                         )
 
+                st.divider()
+                st.markdown("**👤 기본 정보**")
+                col_g2, col_a2 = st.columns(2)
+                with col_g2:
+                    gender_opt2 = st.radio("성별", ["여성 (0)", "남성 (1)"], horizontal=True, key="slider_gender")
+                    user_scores["gender_input"] = 0.0 if "여성" in gender_opt2 else 1.0
+                with col_a2:
+                    user_scores["age_input"] = float(st.slider("연령", 15, 49, 30, 1, key="slider_age"))
+                col_c2, col_d2 = st.columns(2)
+                with col_c2:
+                    climate_opt2 = st.selectbox("거주 기후", ["summer", "Temperate", "winter", "Dry"], key="slider_climate")
+                    climate_enc_map2 = {"summer": 2, "Temperate": 1, "winter": 3, "Dry": 0}
+                    user_scores["climate_enc"] = float(climate_enc_map2[climate_opt2])
+                with col_d2:
+                    diet_opt2 = st.selectbox("식단 유형", ["Balanced", "Vegan", "High_Dairy", "Junk_Food", "High_Sugar"], key="slider_diet")
+                    diet_enc_map2 = {"Balanced": 0, "Vegan": 4, "High_Dairy": 1, "Junk_Food": 2, "High_Sugar": 3}
+                    user_scores["diet_enc"] = float(diet_enc_map2[diet_opt2])
+
             elif input_mode == "📷 얼굴 사진으로 분석":
                 uploaded = st.file_uploader(
                     "얼굴 사진 업로드 (jpg / png)",
@@ -497,72 +573,105 @@ def main():
                     st.success("분석 완료!")
                     st.divider()
 
-                    # AI 자동 추론 결과 표시 (Acne, Aging, Pigmentation)
+                    # AI 자동 추론 결과 표시
                     st.markdown("**🤖 AI 분석 결과**")
-                    auto_cols = [
-                        "Acne_Severity",
-                        "Aging_Severity",
-                        "Pigmentation_Severity",
-                    ]
+                    auto_cols = ["Acne_Severity", "Aging_Severity", "Pigmentation_Severity"]
                     for col in auto_cols:
-                        emoji = SEVERITY_EMOJI[col]
-                        label = SEVERITY_LABELS[col]
                         val = inferred[col]
                         bar_w = min(10, int(val))
                         st.markdown(
-                            f"**{emoji} {label}** `{val:.2f}` "
+                            f"**{SEVERITY_EMOJI[col]} {SEVERITY_LABELS[col]}** `{val:.2f}` "
                             f"{'█' * bar_w}{'░' * (10 - bar_w)}"
                         )
 
                     st.divider()
+                    st.markdown("**📋 설문 (AI 보완용)**")
 
-                    # 설문 2개: Dryness + Sensitivity
-                    st.markdown("**📋 피부 상태 설문** (본인이 더 잘 아는 항목)")
-
+                    # Dryness: AI 40% + 설문 60% 결합
                     dryness_opt = st.radio(
                         "💧 피부 건조함이 어느 정도인가요?",
                         ["거의 없음", "가끔 당김", "자주 당김", "항상 건조"],
                         horizontal=True,
-                        help="세안 후 또는 낮 동안 피부가 당기는 정도를 선택하세요",
+                        help="AI 추론값과 설문값을 결합하여 최종 Dryness를 계산합니다",
                     )
-                    dryness_map = {
-                        "거의 없음": 1.0,
-                        "가끔 당김": 3.5,
-                        "자주 당김": 6.5,
-                        "항상 건조": 9.0,
+                    dryness_survey_map = {
+                        "거의 없음": 1.0, "가끔 당김": 3.5,
+                        "자주 당김": 6.5, "항상 건조": 9.0,
                     }
-                    dryness_val = dryness_map[dryness_opt]
+                    dryness_survey = dryness_survey_map[dryness_opt]
+                    dryness_final = round(0.4 * inferred["Dryness_AI"] + 0.6 * dryness_survey, 2)
 
+                    # Sensitivity: 둘 다 민감→6.49 / 하나만→3.25 / 둘 다 비민감→0.0
                     sens_opt = st.radio(
                         "🌿 민감성 피부인가요?",
                         ["아니오", "예"],
                         horizontal=True,
-                        help="외부 자극(향, 성분 등)에 쉽게 반응하거나 붉어지는 편인지 선택하세요",
+                        help="AI 추론값과 설문값을 결합하여 최종 Sensitivity를 계산합니다",
                     )
-                    sens_val = 6.49 if sens_opt == "예" else 0.0
+                    sens_survey = 6.49 if sens_opt == "예" else 0.0
+                    sens_ai = inferred["Sensitivity_AI"]
+                    if sens_ai > 0 and sens_survey > 0:
+                        sens_final = 6.49
+                    elif sens_ai > 0 or sens_survey > 0:
+                        sens_final = 3.25
+                    else:
+                        sens_final = 0.0
+
+                    # 성별/연령/기후/식단
+                    st.divider()
+                    st.markdown("**👤 기본 정보 (추천 정확도 향상)**")
+                    col_g, col_a = st.columns(2)
+                    with col_g:
+                        gender_opt = st.radio("성별", ["여성 (0)", "남성 (1)"], horizontal=True)
+                        gender_val = 0.0 if "여성" in gender_opt else 1.0
+                    with col_a:
+                        age_val = st.slider("연령", 15, 49, 30, 1)
+                    col_c, col_d = st.columns(2)
+                    with col_c:
+                        climate_opt = st.selectbox("거주 기후", ["summer", "Temperate", "winter", "Dry"])
+                        climate_enc_map = {"summer": 2, "Temperate": 1, "winter": 3, "Dry": 0}
+                        climate_enc_val = climate_enc_map[climate_opt]
+                    with col_d:
+                        diet_opt = st.selectbox("식단 유형", ["Balanced", "Vegan", "High_Dairy", "Junk_Food", "High_Sugar"])
+                        diet_enc_map = {"Balanced": 0, "Vegan": 4, "High_Dairy": 1, "Junk_Food": 2, "High_Sugar": 3}
+                        diet_enc_val = diet_enc_map[diet_opt]
 
                     # 최종 user_scores 조합
                     user_scores = {
                         "Acne_Severity":         inferred["Acne_Severity"],
-                        "Dryness_Severity":      dryness_val,
+                        "Dryness_Severity":      dryness_final,
                         "Aging_Severity":        inferred["Aging_Severity"],
                         "Pigmentation_Severity": inferred["Pigmentation_Severity"],
-                        "Sensitivity_Severity":  sens_val,
+                        "Sensitivity_Severity":  sens_final,
+                        "age_input":             float(age_val),
+                        "gender_input":          gender_val,
+                        "climate_enc":           float(climate_enc_val),
+                        "diet_enc":              float(diet_enc_val),
                     }
 
-                    # 최종 입력값 요약 표시
+                    # 최종 입력값 요약
                     st.divider()
                     st.markdown("**✅ 최종 입력값 요약**")
                     for col in SEVERITY_COLS:
-                        emoji = SEVERITY_EMOJI[col]
-                        label = SEVERITY_LABELS[col]
                         val = user_scores[col]
-                        source = "🤖 AI" if col in auto_cols else "📋 설문"
+                        source = "🤖 AI" if col in auto_cols else "🤖+📋 결합"
                         bar_w = min(10, int(val))
                         st.markdown(
-                            f"{source} **{emoji} {label}** `{val:.2f}` "
-                            f"{'█' * bar_w}{'░' * (10 - bar_w)}"
+                            f"{source} **{SEVERITY_EMOJI[col]} {SEVERITY_LABELS[col]}** "
+                            f"`{val:.2f}` {'█' * bar_w}{'░' * (10 - bar_w)}"
                         )
+                    st.caption(
+                        f"👤 성별: {'여성' if gender_val == 0 else '남성'} | "
+                        f"연령: {age_val}세 | 기후: {climate_opt} | 식단: {diet_opt}"
+                    )
+                    st.caption(
+                        f"💧 Dryness: AI {inferred['Dryness_AI']:.2f} × 40% + "
+                        f"설문 {dryness_survey:.1f} × 60% = {dryness_final:.2f}"
+                    )
+                    st.caption(
+                        f"🌿 Sensitivity: AI {'민감' if sens_ai > 0 else '비민감'} + "
+                        f"설문 {'민감' if sens_survey > 0 else '비민감'} → {sens_final:.2f}"
+                    )
 
                 else:
                     st.info(
@@ -758,12 +867,41 @@ def main():
             st.write(""); st.write("")
             eval_btn = st.button("▶ 평가 실행", type="primary")
 
+        test_k = st.checkbox(
+            "K값 최적화 실험 포함 (K=5,10,15,20 비교)",
+            value=False,
+            help="체크하면 K값별 성능을 비교합니다. 시간이 더 걸립니다.",
+        )
+
         if eval_btn:
             with st.spinner("평가 실행 중... (잠시 기다려 주세요)"):
                 metrics_df = run_evaluation(
                     users, inter, products, knn_mdl, scaler, n_eval=n_eval
                 )
-            st.session_state["metrics"] = metrics_df
+                st.session_state["metrics"] = metrics_df
+
+                if test_k:
+                    k_results = []
+                    for k_val in [5, 10, 15, 20]:
+                        feat_df = users[KNN_FEATURE_COLS].fillna(0)
+                        sc_tmp = MinMaxScaler()
+                        X_tmp = sc_tmp.fit_transform(feat_df)
+                        knn_tmp = NearestNeighbors(
+                            n_neighbors=k_val, metric="cosine", algorithm="brute"
+                        )
+                        knn_tmp.fit(X_tmp)
+                        m = run_evaluation(users, inter, products, knn_tmp, sc_tmp, n_eval=n_eval)
+                        hybrid_row = m[m["모델"] == "하이브리드"].iloc[0]
+                        k_results.append({
+                            "K값": k_val,
+                            "Precision@5": hybrid_row.get("Precision@5", 0),
+                            "NDCG@5": hybrid_row.get("NDCG@5", 0),
+                        })
+                    k_df = pd.DataFrame(k_results)
+                    st.session_state["k_results"] = k_df
+                    best_k = k_df.loc[k_df["NDCG@5"].idxmax(), "K값"]
+                    st.success(f"✅ 최적 K값: {best_k} (NDCG@5 기준)")
+                    st.dataframe(k_df, use_container_width=True)
 
         if "metrics" in st.session_state:
             mdf = st.session_state["metrics"]
