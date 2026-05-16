@@ -565,12 +565,12 @@ def render_card(rec: dict):
   <div style="margin-bottom:10px">{tags}</div>
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:12px">
     <div>
-      <span class="score-label">기능매칭 (α=0.5)</span>
+      <span class="score-label">기능매칭 (α=0.3)</span>
       <div style="font-weight:bold">{rec['feat_score']:.3f}</div>
       {bar(rec['feat_score'])}
     </div>
     <div>
-      <span class="score-label">KNN평점 (β=0.3)</span>
+      <span class="score-label">KNN평점 (β=0.5)</span>
       <div style="font-weight:bold">{rec['knn_score']:.3f}</div>
       {bar(rec['knn_score'])}
     </div>
