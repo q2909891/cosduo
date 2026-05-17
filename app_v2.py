@@ -116,20 +116,22 @@ CAT_COLOR = {
 }
 
 MODEL_LABELS = {
-    "content":     "Content-based",
-    "knn":         "KNN Only",
-    "hybrid":      "하이브리드 (KNN)",
-    "svd":         "SVD Only",
-    "hybrid_svd":  "하이브리드 (SVD)",
-    "bpr":         "BPR Only",
-    "hybrid_bpr":  "하이브리드 (BPR)",
-    "lgcn":        "LightGCN Only",
-    "hybrid_lgcn": "하이브리드 (LightGCN)",
+    "content":         "Content-based",
+    "knn":             "KNN Only",
+    "hybrid":          "하이브리드 (KNN)",
+    "svd":             "SVD Only",
+    "hybrid_svd":      "하이브리드 (SVD)",
+    "bpr":             "BPR Only",
+    "hybrid_bpr":      "하이브리드 (BPR)",
+    "lgcn":            "LightGCN Only",
+    "hybrid_lgcn":     "하이브리드 (LightGCN)",
+    "ensemble":        "앙상블 (KNN+BPR+LightGCN)",
+    "hybrid_ensemble": "하이브리드 앙상블 (BERT+앙상블+올리브영)",
 }
 
 MODEL_COLORS = [
     "#4ECDC4", "#45B7D1", "#FF6B6B", "#96CEB4", "#FFA94D",
-    "#C77DFF", "#7B2FBE", "#06D6A0", "#118AB2",
+    "#C77DFF", "#7B2FBE", "#06D6A0", "#118AB2", "#F72585", "#3A0CA3",
 ]
 
 # ─────────────────────────────────────────────
@@ -303,10 +305,8 @@ def build_product_embeddings(_products_df):
 # 2-d. BPR 모델
 # ─────────────────────────────────────────────
 @st.cache_resource
-def build_bpr(_inter_df, n_factors=64, n_epochs=50, lr=0.01, reg=0.01):
-    """BPR 학습
-    핵심 아이디어: 사용자가 본 제품 > 안 본 제품 이라는 쌍 학습
-    Sparse 환경에서 NCF/SVD보다 효과적"""
+def build_bpr(_inter_df, n_factors=128, n_epochs=100, lr=0.005, reg=0.001):
+    """BPR 학습 — popularity-based negative sampling + 전체 유저 학습"""
     user_ids = _inter_df["User_ID"].unique()
     product_ids = _inter_df["Product_ID"].unique()
     user_idx = {u: i for i, u in enumerate(user_ids)}
@@ -319,19 +319,19 @@ def build_bpr(_inter_df, n_factors=64, n_epochs=50, lr=0.01, reg=0.01):
     U = np.random.normal(0, 0.1, (n_users, n_factors))
     V = np.random.normal(0, 0.1, (n_items, n_factors))
 
-    user_pos = {}
-    for _, row in _inter_df.iterrows():
-        uid = row["User_ID"]
-        pid = row["Product_ID"]
-        if uid not in user_pos:
-            user_pos[uid] = []
-        user_pos[uid].append(pid)
-
+    user_pos = _inter_df.groupby("User_ID")["Product_ID"].apply(list).to_dict()
     all_pids = list(product_ids)
+
+    # 인기도 기반 negative sampling — 인기 있는 제품을 negative로 써서 더 어려운 학습
+    item_popularity = _inter_df["Product_ID"].value_counts().to_dict()
+    pop_pids = [pid for pid, _ in sorted(item_popularity.items(),
+                                          key=lambda x: x[1], reverse=True)
+                if pid in prod_idx]
+    pop_pids = pop_pids[:len(pop_pids)//2]  # 상위 50% 인기 제품을 negative pool로
 
     for epoch in range(n_epochs):
         for uid in np.random.choice(list(user_pos.keys()),
-                                    min(1000, len(user_pos)), replace=False):
+                                    len(user_pos), replace=False):
             if uid not in user_idx:
                 continue
             u_i = user_idx[uid]
@@ -342,9 +342,19 @@ def build_bpr(_inter_df, n_factors=64, n_epochs=50, lr=0.01, reg=0.01):
             if pos_pid not in prod_idx:
                 continue
             p_i = prod_idx[pos_pid]
-            neg_pid = np.random.choice(all_pids)
-            while neg_pid in pos_items:
+            # 70% 확률로 인기 제품에서 negative 샘플링 (더 어려운 학습)
+            if np.random.random() < 0.7 and pop_pids:
+                neg_pid = np.random.choice(pop_pids)
+                tries = 0
+                while neg_pid in pos_items and tries < 10:
+                    neg_pid = np.random.choice(pop_pids)
+                    tries += 1
+                if neg_pid in pos_items:
+                    neg_pid = np.random.choice(all_pids)
+            else:
                 neg_pid = np.random.choice(all_pids)
+                while neg_pid in pos_items:
+                    neg_pid = np.random.choice(all_pids)
             if neg_pid not in prod_idx:
                 continue
             n_i = prod_idx[neg_pid]
@@ -368,11 +378,9 @@ def build_bpr(_inter_df, n_factors=64, n_epochs=50, lr=0.01, reg=0.01):
 # 2-e. LightGCN 모델
 # ─────────────────────────────────────────────
 @st.cache_resource
-def build_lightgcn(_inter_df, n_factors=64, n_layers=3, n_epochs=50,
+def build_lightgcn(_inter_df, n_factors=128, n_layers=4, n_epochs=100,
                    lr=0.001, reg=0.0001):
-    """LightGCN 학습
-    핵심 아이디어: 사용자-제품 그래프에서 이웃 정보를 여러 레이어로 전파
-    A가 X를 샀고 B도 X를 샀으면 → A와 B 임베딩이 가까워짐"""
+    """LightGCN 학습 — 대각 행렬 대신 element-wise 연산으로 메모리 절약"""
     from scipy.sparse import csr_matrix
 
     user_ids = _inter_df["User_ID"].unique()
@@ -383,34 +391,36 @@ def build_lightgcn(_inter_df, n_factors=64, n_layers=3, n_epochs=50,
     n_users = len(user_ids)
     n_items = len(product_ids)
 
-    rows = [user_idx[r["User_ID"]] for _, r in _inter_df.iterrows()
-            if r["User_ID"] in user_idx and r["Product_ID"] in prod_idx]
-    cols = [prod_idx[r["Product_ID"]] for _, r in _inter_df.iterrows()
-            if r["User_ID"] in user_idx and r["Product_ID"] in prod_idx]
+    # 벡터화: iterrows 대신 map 사용
+    valid_mask = (_inter_df["User_ID"].isin(user_idx)) & (_inter_df["Product_ID"].isin(prod_idx))
+    valid_df = _inter_df[valid_mask]
+    row_idx = valid_df["User_ID"].map(user_idx).to_numpy()
+    col_idx = valid_df["Product_ID"].map(prod_idx).to_numpy()
 
-    R = csr_matrix((np.ones(len(rows)), (rows, cols)),
+    R = csr_matrix((np.ones(len(row_idx)), (row_idx, col_idx)),
                    shape=(n_users, n_items))
 
     d_u = np.array(R.sum(axis=1)).flatten() + 1e-10
     d_i = np.array(R.sum(axis=0)).flatten() + 1e-10
-    D_u_inv = np.diag(1.0 / np.sqrt(d_u))
-    D_i_inv = np.diag(1.0 / np.sqrt(d_i))
-    A_norm = D_u_inv @ R.toarray() @ D_i_inv
+    # element-wise 정규화 — np.diag(15000×15000) 대신 브로드캐스팅으로 메모리 절약
+    d_u_inv = (1.0 / np.sqrt(d_u))
+    d_i_inv = (1.0 / np.sqrt(d_i))
+    R_dense = R.toarray()
+    A_norm = d_u_inv[:, None] * R_dense * d_i_inv[None, :]
 
     np.random.seed(42)
     E_u = np.random.normal(0, 0.1, (n_users, n_factors))
     E_i = np.random.normal(0, 0.1, (n_items, n_factors))
 
-    user_pos = {}
-    for _, row in _inter_df.iterrows():
-        uid = row["User_ID"]
-        pid = row["Product_ID"]
-        if uid not in user_pos:
-            user_pos[uid] = []
-        if pid in prod_idx:
-            user_pos[uid].append(pid)
-
+    # user_pos 벡터화
+    user_pos = _inter_df[valid_mask].groupby("User_ID")["Product_ID"].apply(list).to_dict()
     all_pids = list(product_ids)
+
+    item_popularity_lgcn = _inter_df[valid_mask]["Product_ID"].value_counts().to_dict()
+    pop_pids_lgcn = [pid for pid, _ in sorted(item_popularity_lgcn.items(),
+                                               key=lambda x: x[1], reverse=True)
+                     if pid in prod_idx]
+    pop_pids_lgcn = pop_pids_lgcn[:len(pop_pids_lgcn)//2]
 
     for epoch in range(n_epochs):
         E_u_agg = E_u.copy()
@@ -429,7 +439,7 @@ def build_lightgcn(_inter_df, n_factors=64, n_layers=3, n_epochs=50,
         E_i_final = E_i_agg / (n_layers + 1)
 
         sample_users = np.random.choice(
-            list(user_pos.keys()), min(500, len(user_pos)), replace=False
+            list(user_pos.keys()), len(user_pos), replace=False
         )
         for uid in sample_users:
             if uid not in user_idx or not user_pos.get(uid):
@@ -439,9 +449,18 @@ def build_lightgcn(_inter_df, n_factors=64, n_layers=3, n_epochs=50,
             if pos_pid not in prod_idx:
                 continue
             p_i = prod_idx[pos_pid]
-            neg_pid = np.random.choice(all_pids)
-            while neg_pid in user_pos[uid]:
+            if np.random.random() < 0.7 and pop_pids_lgcn:
+                neg_pid = np.random.choice(pop_pids_lgcn)
+                tries = 0
+                while neg_pid in user_pos[uid] and tries < 10:
+                    neg_pid = np.random.choice(pop_pids_lgcn)
+                    tries += 1
+                if neg_pid in user_pos[uid]:
+                    neg_pid = np.random.choice(all_pids)
+            else:
                 neg_pid = np.random.choice(all_pids)
+                while neg_pid in user_pos[uid]:
+                    neg_pid = np.random.choice(all_pids)
             if neg_pid not in prod_idx:
                 continue
             n_i = prod_idx[neg_pid]
@@ -639,19 +658,41 @@ def recommend(
     max_feat = df["feat_raw"].max() or 1.0
     df["feat_score"] = df["feat_raw"] / max_feat
 
-    # BERT 임베딩 블렌딩
-    if pid_to_emb is not None:
-        bert_scores = []
-        for pid in df["Product_ID"]:
-            if int(pid) in pid_to_emb:
-                prod_emb = pid_to_emb[int(pid)]
-                bert_scores.append(float(np.linalg.norm(prod_emb) / 10.0))
-            else:
-                bert_scores.append(0.0)
-        df["bert_score"] = bert_scores
-        max_bert = df["bert_score"].max() or 1.0
-        df["bert_score"] = df["bert_score"] / max_bert
-        df["feat_score"] = 0.7 * df["feat_score"] + 0.3 * df["bert_score"]
+    # BERT 임베딩 — 사용자 Severity 기반 쿼리 벡터와 제품 임베딩 코사인 유사도
+    if pid_to_emb is not None and len(pid_to_emb) > 0:
+        user_weights_for_bert = get_user_weights(user_scores)
+        top3_funcs = sorted(user_weights_for_bert.items(),
+                            key=lambda x: x[1], reverse=True)[:3]
+
+        query_embs = []
+        for func, weight in top3_funcs:
+            func_products = df[df["기능(Function)"].str.contains(func, na=False)]
+            for pid in func_products["Product_ID"]:
+                if int(pid) in pid_to_emb:
+                    query_embs.append(pid_to_emb[int(pid)] * weight)
+
+        if query_embs:
+            query_vec = np.mean(query_embs, axis=0)
+            query_norm = np.linalg.norm(query_vec)
+
+            bert_scores = []
+            for pid in df["Product_ID"]:
+                if int(pid) in pid_to_emb:
+                    prod_emb = pid_to_emb[int(pid)]
+                    prod_norm = np.linalg.norm(prod_emb)
+                    if query_norm > 0 and prod_norm > 0:
+                        cosine_sim = float(np.dot(query_vec, prod_emb) /
+                                          (query_norm * prod_norm))
+                        bert_scores.append((cosine_sim + 1) / 2)
+                    else:
+                        bert_scores.append(0.5)
+                else:
+                    bert_scores.append(0.5)
+
+            df["bert_score"] = bert_scores
+            df["feat_score"] = 0.6 * df["feat_score"] + 0.4 * df["bert_score"]
+        else:
+            df["bert_score"] = 0.5
     else:
         df["bert_score"] = 0.0
 
@@ -709,6 +750,30 @@ def recommend(
         df["final_score"] = alpha * df["feat_score"] + beta * df["bpr_score"] + gamma * df["oy_norm"]
     elif model_type == "hybrid_lgcn":
         df["final_score"] = alpha * df["feat_score"] + beta * df["lgcn_score"] + gamma * df["oy_norm"]
+    elif model_type == "ensemble":
+        knn_sc_e = knn_product_scores(user_scores, users_df, knn_mdl, scaler, inter_df)
+        df["knn_score_e"] = _minmax_norm(df["Product_ID"].map(knn_sc_e).fillna(0) / 5.0)
+
+        bpr_sc_e = bpr_product_scores(user_scores, users_df, bpr_model, knn_mdl, scaler) if bpr_model else {}
+        df["bpr_score_e"] = _minmax_norm(df["Product_ID"].map(bpr_sc_e).fillna(0)) if bpr_sc_e else 0.0
+
+        lgcn_sc_e = lightgcn_product_scores(user_scores, users_df, lgcn_model, knn_mdl, scaler) if lgcn_model else {}
+        df["lgcn_score_e"] = _minmax_norm(df["Product_ID"].map(lgcn_sc_e).fillna(0)) if lgcn_sc_e else 0.0
+
+        df["cf_ensemble"] = (df["knn_score_e"] + df["bpr_score_e"] + df["lgcn_score_e"]) / 3.0
+        df["final_score"] = alpha * df["feat_score"] + beta * df["cf_ensemble"] + gamma * df["oy_norm"]
+    elif model_type == "hybrid_ensemble":
+        knn_sc_he = knn_product_scores(user_scores, users_df, knn_mdl, scaler, inter_df)
+        df["knn_score_he"] = _minmax_norm(df["Product_ID"].map(knn_sc_he).fillna(0) / 5.0)
+
+        bpr_sc_he = bpr_product_scores(user_scores, users_df, bpr_model, knn_mdl, scaler) if bpr_model else {}
+        df["bpr_score_he"] = _minmax_norm(df["Product_ID"].map(bpr_sc_he).fillna(0)) if bpr_sc_he else 0.0
+
+        lgcn_sc_he = lightgcn_product_scores(user_scores, users_df, lgcn_model, knn_mdl, scaler) if lgcn_model else {}
+        df["lgcn_score_he"] = _minmax_norm(df["Product_ID"].map(lgcn_sc_he).fillna(0)) if lgcn_sc_he else 0.0
+
+        df["cf_ensemble_he"] = (df["knn_score_he"] + df["bpr_score_he"] + df["lgcn_score_he"]) / 3.0
+        df["final_score"] = alpha * df["feat_score"] + beta * df["cf_ensemble_he"] + gamma * df["oy_norm"]
     else:  # hybrid (KNN)
         df["final_score"] = alpha * df["feat_score"] + beta * df["knn_score"] + gamma * df["oy_norm"]
 
@@ -758,6 +823,13 @@ def run_evaluation(users_df, inter_df, products_df, knn_mdl, scaler,
         models += ["bpr", "hybrid_bpr"]
     if lgcn_model is not None:
         models += ["lgcn", "hybrid_lgcn"]
+    if bpr_model is not None and lgcn_model is not None:
+        models += ["ensemble", "hybrid_ensemble"]
+
+    # DEBUG
+    st.write("🔍 [DEBUG] bpr_model is None:", bpr_model is None)
+    st.write("🔍 [DEBUG] lgcn_model is None:", lgcn_model is None)
+    st.write("🔍 [DEBUG] models:", models)
 
     hits    = {m: {k: 0   for k in k_list} for m in models}
     ndcg    = {m: {k: 0.0 for k in k_list} for m in models}
@@ -889,13 +961,31 @@ def main():
         "이화여자대학교 데이터사이언스대학원 DUO COS"
     )
 
-    with st.spinner("데이터 및 모델 로딩 중... (BPR·LightGCN 학습 포함, 최대 3분 소요)"):
+    debug_placeholder = st.empty()
+    debug_placeholder.info("⏳ 모델 로딩 중...")
+
+    with st.spinner("데이터 및 모델 로딩 중... (BPR·LightGCN 학습 포함)"):
         users, inter, y_labels, products = load_data()
         knn_mdl, scaler = build_knn(users)
         svd_mdl = load_svd_model()
         pid_to_emb, _ = build_product_embeddings(products)
-        bpr_mdl  = build_bpr(inter)
-        lgcn_mdl = build_lightgcn(inter)
+
+        try:
+            bpr_mdl = build_bpr(inter)
+        except Exception as e:
+            st.error(f"❌ BPR 빌드 실패: {e}")
+            bpr_mdl = None
+
+        try:
+            lgcn_mdl = build_lightgcn(inter)
+        except Exception as e:
+            st.error(f"❌ LightGCN 빌드 실패: {e}")
+            lgcn_mdl = None
+
+    debug_placeholder.write(
+        f"🔍 [로딩 완료] bpr_mdl is None: {bpr_mdl is None} "
+        f"| lgcn_mdl is None: {lgcn_mdl is None}"
+    )
 
     tab_rec, tab_eval, tab_data = st.tabs(
         ["🎯 추천받기", "📊 성능 비교", "📈 EDA / 데이터 분석"]
@@ -1097,18 +1187,20 @@ def main():
             st.divider()
             model_type = st.selectbox(
                 "추천 모델",
-                options=["hybrid", "hybrid_bpr", "hybrid_lgcn", "hybrid_svd",
-                         "knn", "bpr", "lgcn", "svd", "content"],
+                options=["hybrid", "hybrid_ensemble", "hybrid_bpr", "hybrid_lgcn",
+                         "hybrid_svd", "knn", "ensemble", "bpr", "lgcn", "svd", "content"],
                 format_func=lambda x: {
-                    "hybrid":      "⚡ 하이브리드 KNN (기능매칭 + KNN + 올리브영) [동적 가중치]",
-                    "hybrid_bpr":  "🎯 하이브리드 BPR (기능매칭 + BPR + 올리브영) [동적 가중치]",
-                    "hybrid_lgcn": "🕸️ 하이브리드 LightGCN (기능매칭 + 그래프 + 올리브영) [동적 가중치]",
-                    "hybrid_svd":  "🎬 하이브리드 SVD (넷플릭스 방식) [동적 가중치]",
-                    "knn":         "👥 KNN Only",
-                    "bpr":         "🎯 BPR Only",
-                    "lgcn":        "🕸️ LightGCN Only",
-                    "svd":         "🔢 SVD Only",
-                    "content":     "🧴 기능매칭 Only (BERT 강화)",
+                    "hybrid":          "⚡ 하이브리드 KNN [동적 가중치]",
+                    "hybrid_ensemble": "🏆 하이브리드 앙상블 (BERT+KNN+BPR+LightGCN) [동적 가중치]",
+                    "hybrid_bpr":      "🎯 하이브리드 BPR [동적 가중치]",
+                    "hybrid_lgcn":     "🕸️ 하이브리드 LightGCN [동적 가중치]",
+                    "hybrid_svd":      "🎬 하이브리드 SVD [동적 가중치]",
+                    "knn":             "👥 KNN Only",
+                    "ensemble":        "🔀 앙상블 (KNN+BPR+LightGCN)",
+                    "bpr":             "🎯 BPR Only",
+                    "lgcn":            "🕸️ LightGCN Only",
+                    "svd":             "🔢 SVD Only",
+                    "content":         "🧴 기능매칭 Only (BERT 강화)",
                 }[x],
             )
             show_top3 = st.checkbox(
