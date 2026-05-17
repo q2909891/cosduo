@@ -445,7 +445,7 @@ def recommend(
 # 6. Leave-one-out 평가
 # ─────────────────────────────────────────────
 def run_evaluation(users_df, inter_df, products_df, knn_mdl, scaler,
-                   n_eval: int = 200, k_list=(1, 3, 5, 10),
+                   n_eval: int = 200, k_list=(5, 10, 15),
                    test_k_values=False, svd_model=None):
     """Content-based / KNN / Hybrid / SVD / Hybrid_SVD 5모델 비교"""
     valid_pids = set(products_df["Product_ID"].tolist())
@@ -553,8 +553,8 @@ def render_card(rec: dict):
           border-radius:10px;font-size:12px;font-weight:bold">
       {CAT_DISPLAY.get(rec['category'], rec['category'])}
     </span>
-    <span style="font-size:22px;font-weight:bold;color:{color}">
-      {rec['final_score']:.3f}
+    <span style="font-size:16px;font-weight:bold;color:{color}">
+      추천 점수 {rec['final_score']:.3f}
     </span>
   </div>
   <div style="font-weight:bold;font-size:15px;margin-bottom:3px">{rec['name']}</div>
@@ -828,8 +828,21 @@ def main():
                 )
                 per_cat = st.session_state.get("last_top_n", 1)
                 st.subheader(f"✅ 맞춤 추천 {len(recs)}개 (카테고리별 {per_cat}개)")
+                cat_recs: dict = {}
+                cats_order: list = []
                 for rec in recs:
-                    render_card(rec)
+                    cat = rec["category"]
+                    if cat not in cat_recs:
+                        cat_recs[cat] = []
+                        cats_order.append(cat)
+                    cat_recs[cat].append(rec)
+                for cat in cats_order:
+                    st.markdown(f"#### {CAT_DISPLAY.get(cat, cat)}")
+                    items = cat_recs[cat]
+                    cols = st.columns(3)
+                    for i, rec in enumerate(items):
+                        with cols[i % 3]:
+                            render_card(rec)
             else:
                 st.markdown("""
 ### 추천 방식 안내
@@ -998,19 +1011,19 @@ def main():
                         hybrid_row = m[m["모델"] == "하이브리드 (KNN)"].iloc[0]
                         k_results.append({
                             "K값": k_val,
-                            "Precision@5": hybrid_row.get("Precision@5", 0),
-                            "NDCG@5": hybrid_row.get("NDCG@5", 0),
+                            "Precision@15": hybrid_row.get("Precision@15", 0),
+                            "NDCG@15": hybrid_row.get("NDCG@15", 0),
                         })
                     k_df = pd.DataFrame(k_results)
                     st.session_state["k_results"] = k_df
-                    best_k = k_df.loc[k_df["NDCG@5"].idxmax(), "K값"]
-                    st.success(f"✅ 최적 K값: {best_k} (NDCG@5 기준)")
+                    best_k = k_df.loc[k_df["NDCG@15"].idxmax(), "K값"]
+                    st.success(f"✅ 최적 K값: {best_k} (NDCG@15 기준)")
                     st.dataframe(k_df, use_container_width=True)
 
         if "metrics" in st.session_state:
             mdf = st.session_state["metrics"]
             st.dataframe(
-                mdf.set_index("모델").style.highlight_max(axis=0, color="#d4f4dd"),
+                mdf.set_index("모델"),
                 use_container_width=True,
             )
 
