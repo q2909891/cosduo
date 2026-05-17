@@ -116,17 +116,11 @@ CAT_COLOR = {
 }
 
 MODEL_LABELS = {
-    "content":         "Content-based",
-    "knn":             "KNN Only",
-    "hybrid":          "하이브리드 (KNN)",
-    "svd":             "SVD Only",
-    "hybrid_svd":      "하이브리드 (SVD)",
-    "bpr":             "BPR Only",
-    "hybrid_bpr":      "하이브리드 (BPR)",
-    "lgcn":            "LightGCN Only",
-    "hybrid_lgcn":     "하이브리드 (LightGCN)",
-    "ensemble":        "앙상블 (KNN+BPR+LightGCN)",
-    "hybrid_ensemble": "하이브리드 앙상블 (BERT+앙상블+올리브영)",
+    "content":  "기능매칭 (BERT 강화)",
+    "knn":      "KNN Only",
+    "hybrid":   "하이브리드 KNN (권장)",
+    "svd":      "SVD (넷플릭스 방식)",
+    "ensemble": "앙상블 (KNN+BPR+LightGCN)",
 }
 
 MODEL_COLORS = [
@@ -816,15 +810,7 @@ def run_evaluation(users_df, inter_df, products_df, knn_mdl, scaler,
     np.random.seed(42)
     sample = np.random.choice(eligible, min(n_eval, len(eligible)), replace=False)
 
-    models = ["content", "knn", "hybrid"]
-    if svd_model is not None:
-        models += ["svd", "hybrid_svd"]
-    if bpr_model is not None:
-        models += ["bpr", "hybrid_bpr"]
-    if lgcn_model is not None:
-        models += ["lgcn", "hybrid_lgcn"]
-    if bpr_model is not None and lgcn_model is not None:
-        models += ["ensemble", "hybrid_ensemble"]
+    models = ["content", "knn", "hybrid", "svd", "ensemble"]
 
     # DEBUG
     st.write("🔍 [DEBUG] bpr_model is None:", bpr_model is None)
@@ -955,10 +941,11 @@ def render_card(rec: dict):
 # 9. MAIN APP
 # ─────────────────────────────────────────────
 def main():
-    st.title("🧴 COSDUO v2 — BERT + BPR + LightGCN + 동적 가중치")
+    st.title("🧴 COSDUO — 얼굴 이미지 기반 스킨케어 루틴 추천 v2")
     st.caption(
-        "ResNet50 피부 분석 → 하이브리드 추천 (기능매칭 + BERT 임베딩 + BPR/LightGCN + 올리브영 평점) | "
-        "이화여자대학교 데이터사이언스대학원 DUO COS"
+        "ResNet50 피부 분석 + BERT 제품 임베딩 + 하이브리드 추천 (동적 가중치) | "
+        "이화여자대학교 데이터사이언스대학원 DUO COS | "
+        "GitHub: https://github.com/q2909891/cosduo"
     )
 
     debug_placeholder = st.empty()
@@ -999,11 +986,26 @@ def main():
 
         with left:
             st.subheader("피부 상태 입력")
+            st.markdown("**📋 피부 상태 입력 방법을 선택하세요**")
+            with st.expander("💡 입력 방법 안내"):
+                st.markdown("""
+- **📷 얼굴 사진으로 분석**: 사진을 업로드하면 AI가 여드름·노화·색소침착을 자동 분석합니다. 건조함과 민감성은 간단한 설문으로 보완합니다.
+- **슬라이더 직접 입력**: 피부 고민 정도를 직접 조절합니다. 0은 고민 없음, 10은 매우 심각합니다.
+
+> **Severity란?** 피부 상태의 심각도를 0~10 사이 수치로 표현한 것입니다. 값이 높을수록 해당 피부 고민이 심한 것을 의미합니다.
+                """)
             input_mode = st.radio(
                 "입력 방법",
                 ["슬라이더 직접 입력", "📷 얼굴 사진으로 분석"],
                 horizontal=True,
             )
+
+            SLIDER_HELP = {
+                "Acne_Severity":         "여드름, 뾰루지, 트러블이 얼마나 자주/심하게 나는지 (0: 없음 / 5: 가끔 / 10: 매우 심함)",
+                "Dryness_Severity":      "세안 후 또는 낮 동안 피부가 당기거나 건조한 정도 (0: 촉촉함 / 5: 가끔 당김 / 10: 항상 건조)",
+                "Pigmentation_Severity": "기미, 잡티, 색소침착의 정도 (0: 없음 / 3: 중간 / 6: 매우 심함)",
+                "Aging_Severity":        "주름, 탄력 저하, 처짐의 정도 (0: 없음 / 2: 중간 / 4.2: 매우 심함)",
+            }
 
             if input_mode == "슬라이더 직접 입력":
                 user_scores: dict = {}
@@ -1021,25 +1023,29 @@ def main():
                     else:
                         user_scores[col] = st.slider(
                             f"{emoji} {label}", 0.0, 10.0, 3.0, 0.1,
-                            help="0: 없음 · 5: 보통 · 10: 심각",
+                            help=SLIDER_HELP.get(col, "0: 없음 · 5: 보통 · 10: 심각"),
                         )
 
                 st.divider()
                 st.markdown("**👤 기본 정보**")
                 col_g2, col_a2 = st.columns(2)
                 with col_g2:
-                    gender_opt2 = st.radio("성별", ["여성 (0)", "남성 (1)"], horizontal=True, key="slider_gender")
+                    gender_opt2 = st.radio("성별", ["여성 (0)", "남성 (1)"], horizontal=True, key="slider_gender",
+                                           help="성별에 따라 유사 사용자 탐색 정확도가 높아집니다")
                     user_scores["gender_input"] = 0.0 if "여성" in gender_opt2 else 1.0
                 with col_a2:
-                    age_val2 = st.slider("연령", 1, 100, 30, 1, key="slider_age")
+                    age_val2 = st.slider("연령", 1, 100, 30, 1, key="slider_age",
+                                         help="실제 나이를 입력하세요. 추천 시 15~49세 범위로 자동 조정됩니다")
                     user_scores["age_input"] = float(max(15, min(age_val2, 49)))
                 col_c2, col_d2 = st.columns(2)
                 with col_c2:
-                    climate_opt2 = st.selectbox("거주 기후", ["summer", "Temperate", "winter", "Dry"], key="slider_climate")
+                    climate_opt2 = st.selectbox("거주 기후", ["summer", "Temperate", "winter", "Dry"], key="slider_climate",
+                                                help="summer: 고온다습 / Temperate: 온대 / winter: 한랭 / Dry: 건조")
                     climate_enc_map2 = {"summer": 2, "Temperate": 1, "winter": 3, "Dry": 0}
                     user_scores["climate_enc"] = float(climate_enc_map2[climate_opt2])
                 with col_d2:
-                    diet_opt2 = st.selectbox("식단 유형", ["Balanced", "Vegan", "High_Dairy", "Junk_Food", "High_Sugar"], key="slider_diet")
+                    diet_opt2 = st.selectbox("식단 유형", ["Balanced", "Vegan", "High_Dairy", "Junk_Food", "High_Sugar"], key="slider_diet",
+                                             help="Balanced: 균형식 / Vegan: 채식 / High_Dairy: 유제품 많음 / Junk_Food: 인스턴트 / High_Sugar: 당분 많음")
                     diet_enc_map2 = {"Balanced": 0, "Vegan": 4, "High_Dairy": 1, "Junk_Food": 2, "High_Sugar": 3}
                     user_scores["diet_enc"] = float(diet_enc_map2[diet_opt2])
 
@@ -1047,14 +1053,16 @@ def main():
                 with col_st:
                     skin_type_opt = st.selectbox(
                         "피부 타입", ["Combination", "Dry", "Normal", "Oily", "Sensitive"],
-                        key="slider_skin_type"
+                        key="slider_skin_type",
+                        help="Combination: 복합성 / Dry: 건성 / Normal: 중성 / Oily: 지성 / Sensitive: 민감성"
                     )
                     skin_type_enc_map = {"Combination": 0, "Dry": 1, "Normal": 2, "Oily": 3, "Sensitive": 4}
                     user_scores["skin_type_enc"] = float(skin_type_enc_map[skin_type_opt])
                 with col_hs:
                     hormonal_opt = st.selectbox(
                         "호르몬 상태", ["Stable", "Teen", "Pregnant", "PCOS"],
-                        key="slider_hormonal"
+                        key="slider_hormonal",
+                        help="Stable: 안정 / Teen: 10대 / Pregnant: 임신 중 / PCOS: 다낭성난소증후군"
                     )
                     hormonal_enc_map = {"Stable": 3, "Teen": 4, "Pregnant": 1, "PCOS": 2}
                     user_scores["hormonal_enc"] = float(hormonal_enc_map[hormonal_opt])
@@ -1186,23 +1194,29 @@ def main():
 
             st.divider()
             model_type = st.selectbox(
-                "추천 모델",
-                options=["hybrid", "hybrid_ensemble", "hybrid_bpr", "hybrid_lgcn",
-                         "hybrid_svd", "knn", "ensemble", "bpr", "lgcn", "svd", "content"],
+                "추천 모델 선택",
+                options=["hybrid", "knn", "svd", "ensemble", "content"],
                 format_func=lambda x: {
-                    "hybrid":          "⚡ 하이브리드 KNN [동적 가중치]",
-                    "hybrid_ensemble": "🏆 하이브리드 앙상블 (BERT+KNN+BPR+LightGCN) [동적 가중치]",
-                    "hybrid_bpr":      "🎯 하이브리드 BPR [동적 가중치]",
-                    "hybrid_lgcn":     "🕸️ 하이브리드 LightGCN [동적 가중치]",
-                    "hybrid_svd":      "🎬 하이브리드 SVD [동적 가중치]",
-                    "knn":             "👥 KNN Only",
-                    "ensemble":        "🔀 앙상블 (KNN+BPR+LightGCN)",
-                    "bpr":             "🎯 BPR Only",
-                    "lgcn":            "🕸️ LightGCN Only",
-                    "svd":             "🔢 SVD Only",
-                    "content":         "🧴 기능매칭 Only (BERT 강화)",
+                    "hybrid":   "⚡ 하이브리드 KNN (권장) — 기능매칭 + KNN + 올리브영 평점",
+                    "knn":      "👥 KNN — 나와 피부가 비슷한 사람들이 좋아한 제품 추천",
+                    "svd":      "🎬 SVD — 넷플릭스 방식 행렬 분해로 잠재 패턴 학습",
+                    "ensemble": "🔀 앙상블 — KNN + BPR + LightGCN 3가지 모델 평균",
+                    "content":  "🧴 기능매칭 — 피부 고민과 제품 기능만으로 매칭 (BERT 강화)",
                 }[x],
+                help="추천 알고리즘을 선택합니다. 권장 모델은 하이브리드 KNN입니다."
             )
+            with st.expander("📌 모델별 설명 보기"):
+                st.markdown("""
+| 모델 | 어떻게 추천하는가 | 특징 |
+|---|---|---|
+| ⚡ **하이브리드 KNN (권장)** | 기능매칭 + 유사 사용자 경험 + 올리브영 평점 결합 | 피부 고민이 심할수록 기능매칭 비중 자동 증가 (동적 가중치) |
+| 👥 **KNN** | 나와 Severity가 비슷한 사람 5명이 좋아한 제품 | Age/성별/기후/식단까지 반영한 유사 사용자 탐색 |
+| 🎬 **SVD** | 15,000명 × 600개 평점 행렬을 분해하여 잠재 패턴 학습 | 넷플릭스가 사용하는 방식. 간접적 취향 패턴 반영 |
+| 🔀 **앙상블** | KNN + BPR + LightGCN 세 모델 점수를 평균 | 단일 모델의 약점을 상호 보완 |
+| 🧴 **기능매칭** | 피부 고민 → 필요 기능 → 제품 기능 일치도 계산 | BERT 한국어 모델로 상품명 의미까지 반영 |
+
+> **동적 가중치란?** 피부 고민이 뚜렷할수록 기능매칭(α) 비중이 자동으로 높아지고, 고민이 약할수록 협업 필터링(β) 비중이 높아집니다.
+                """)
             show_top3 = st.checkbox(
                 "카테고리별 3개 추천 보기",
                 value=False,
@@ -1359,13 +1373,24 @@ def main():
             "캐글 15,000명 데이터 내부에서 유사 사용자를 얼마나 정확히 찾는지 검증합니다."
         )
 
-        with st.expander("📌 평가 방법 안내", expanded=False):
+        with st.expander("📌 평가 방법 및 모델 설명", expanded=False):
             st.markdown("""
-- **Leave-one-out**: 각 Kaggle 사용자의 최고 평점 제품을 hold-out 후 추천
-- **유효 제품**: 올리브영 DB에 매칭된 Product_ID만 대상
-- **Precision@K**: 상위 K개 추천 중 hold-out 제품이 포함된 비율
-- **NDCG@K**: 순위 가중 평가 지표 (`1/log₂(rank+1)`)
-- **BPR/LightGCN**: Sparse 데이터에 특화된 협업 필터링 모델 추가
+**평가 방법: Leave-one-out**
+- 각 사용자의 최고 평점 제품 1개를 숨긴 후 추천 생성
+- 숨긴 제품이 추천 목록에 포함되는지 확인
+- Precision@K: 상위 K개 중 정답 포함 비율
+- NDCG@K: 정답의 순위가 높을수록 높은 점수
+
+**비교 모델 5가지**
+| 모델 | 설명 |
+|---|---|
+| 기능매칭 (BERT 강화) | 피부 고민 → 제품 기능 직접 매칭. BERT 상품명 임베딩 포함 |
+| KNN Only | 유사 사용자 5명의 평점 기반 추천 |
+| 하이브리드 KNN (권장) | 기능매칭 + KNN + 올리브영 평점 결합. 동적 가중치 |
+| SVD (넷플릭스 방식) | 15,000명 × 600개 행렬 분해로 잠재 패턴 학습 |
+| 앙상블 | KNN + BPR + LightGCN 평균으로 단일 모델 약점 보완 |
+
+> **한계:** 이 평가는 Kaggle 데이터 내부 검증입니다. 올리브영 추천 품질은 섹션 A의 3가지 지표로 별도 평가합니다.
             """)
 
         col_n, col_btn = st.columns([2, 1])
