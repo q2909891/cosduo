@@ -445,7 +445,7 @@ def recommend(
 # 6. Leave-one-out 평가
 # ─────────────────────────────────────────────
 def run_evaluation(users_df, inter_df, products_df, knn_mdl, scaler,
-                   n_eval: int = 200, k_list=(1, 3, 5),
+                   n_eval: int = 200, k_list=(1, 3, 5, 10),
                    test_k_values=False, svd_model=None):
     """Content-based / KNN / Hybrid / SVD / Hybrid_SVD 5모델 비교"""
     valid_pids = set(products_df["Product_ID"].tolist())
