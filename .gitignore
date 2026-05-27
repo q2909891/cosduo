@@ -1,5 +1,6 @@
 # 대용량 데이터 파일
 *.csv
+!treatment_mapping.csv
 *.xlsx
 *.pth
 *.png
