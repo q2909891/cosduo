@@ -3,6 +3,8 @@
 !treatment_mapping.csv
 *.xlsx
 *.pth
+!results/disease_cls_resnet50.pth
+!results/atopy_severity_resnet50.pth
 *.png
 *.jpg
 *.jpeg

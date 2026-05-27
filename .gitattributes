@@ -1,3 +1,5 @@
 results/*.pth filter=lfs diff=lfs merge=lfs -text
 results/*.pkl filter=lfs diff=lfs merge=lfs -text
 *.xlsx filter=lfs diff=lfs merge=lfs -text
+results/disease_cls_resnet50.pth filter=lfs diff=lfs merge=lfs -text
+results/atopy_severity_resnet50.pth filter=lfs diff=lfs merge=lfs -text
