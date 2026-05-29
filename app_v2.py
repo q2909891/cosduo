@@ -962,11 +962,6 @@ def run_evaluation(users_df, inter_df, products_df, knn_mdl, scaler,
 
     models = ["content", "knn", "hybrid", "svd", "ensemble"]
 
-    # DEBUG
-    st.write("🔍 [DEBUG] bpr_model is None:", bpr_model is None)
-    st.write("🔍 [DEBUG] lgcn_model is None:", lgcn_model is None)
-    st.write("🔍 [DEBUG] models:", models)
-
     hits    = {m: {k: 0   for k in k_list} for m in models}
     ndcg    = {m: {k: 0.0 for k in k_list} for m in models}
     total   = {m: 0 for m in models}
@@ -1113,12 +1108,12 @@ def render_baumann_card(baumann_type: str):
   <div style="color:#333;font-size:13px;margin-bottom:12px">{data['description']}</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
     <div style="background:#fff;border-radius:8px;padding:10px 14px">
-      <div style="font-size:11px;color:#888;margin-bottom:4px">주요 고민</div>
-      <div style="font-size:13px;font-weight:600;color:#222">{data['main_concern']}</div>
+      <div style="font-size:12px;font-weight:700;color:#555;margin-bottom:6px">주요 고민</div>
+      <div style="font-size:12px;font-weight:400;color:#222;line-height:1.6">{data['main_concern']}</div>
     </div>
     <div style="background:#fff;border-radius:8px;padding:10px 14px">
-      <div style="font-size:11px;color:#888;margin-bottom:4px">케어 방향</div>
-      <div style="font-size:13px;color:#222">{data['care_direction']}</div>
+      <div style="font-size:12px;font-weight:700;color:#555;margin-bottom:6px">케어 방향</div>
+      <div style="font-size:12px;font-weight:400;color:#222;line-height:1.6">{data['care_direction']}</div>
     </div>
   </div>
   <div style="font-size:11px;color:#bbb">
@@ -1132,15 +1127,7 @@ def render_baumann_card(baumann_type: str):
 # 9. MAIN APP
 # ─────────────────────────────────────────────
 def main():
-    st.title("🧴 COSDUO — 얼굴 이미지 기반 스킨케어 루틴 추천 v2")
-    st.caption(
-        "ResNet50 피부 분석 + BERT 제품 임베딩 + 하이브리드 추천 (동적 가중치) | "
-        "이화여자대학교 데이터사이언스대학원 DUO COS | "
-        "GitHub: https://github.com/q2909891/cosduo"
-    )
-
-    debug_placeholder = st.empty()
-    debug_placeholder.info("⏳ 모델 로딩 중...")
+    st.title("얼굴 이미지 기반 스킨케어 루틴 추천")
 
     with st.spinner("데이터 및 모델 로딩 중... (BPR·LightGCN 학습 포함)"):
         users, inter, y_labels, products = load_data()
@@ -1159,11 +1146,6 @@ def main():
         except Exception as e:
             st.error(f"❌ LightGCN 빌드 실패: {e}")
             lgcn_mdl = None
-
-    debug_placeholder.write(
-        f"🔍 [로딩 완료] bpr_mdl is None: {bpr_mdl is None} "
-        f"| lgcn_mdl is None: {lgcn_mdl is None}"
-    )
 
     tab_rec, tab_eval, tab_data = st.tabs(
         ["🎯 추천받기", "📊 성능 비교", "📈 EDA / 데이터 분석"]
