@@ -129,6 +129,124 @@ MODEL_COLORS = [
 ]
 
 # ─────────────────────────────────────────────
+# Baumann 16 type data
+# ─────────────────────────────────────────────
+BAUMANN_TYPE_DATA = {
+    "OSPT": {
+        "full_name": "지성·민감·색소·탄력형",
+        "description": "피지 분비가 많고 민감하며, 색소침착 경향이 있지만 탄력은 유지된 타입.",
+        "indicators": {"지성(O)": True, "민감성(S)": True, "색소침착(P)": True, "노화(W)": False},
+        "main_concern": "여드름·트러블, 색소침착, 자극 반응",
+        "care_direction": "논코메도제닉 제품 사용, 나이아신아마이드로 색소 케어, 자외선 차단 철저",
+    },
+    "OSPW": {
+        "full_name": "지성·민감·색소·노화형",
+        "description": "피지가 많고 민감하며, 색소침착과 노화 두 가지 고민을 동시에 가진 복합 타입.",
+        "indicators": {"지성(O)": True, "민감성(S)": True, "색소침착(P)": True, "노화(W)": True},
+        "main_concern": "여드름·트러블, 색소침착, 노화·주름, 자극 반응",
+        "care_direction": "자외선 차단 최우선, 레티놀·나이아신아마이드 병용, 항염 성분으로 민감성 관리",
+    },
+    "OSNT": {
+        "full_name": "지성·민감·무색소·탄력형",
+        "description": "피지 분비가 많고 민감하지만, 색소침착과 노화 고민이 적은 타입.",
+        "indicators": {"지성(O)": True, "민감성(S)": True, "색소침착(P)": False, "노화(W)": False},
+        "main_concern": "여드름·트러블, 피지 조절, 자극 반응",
+        "care_direction": "저자극 세정제, 유·수분 밸런스 케어, 살리실산으로 피지 조절",
+    },
+    "OSNW": {
+        "full_name": "지성·민감·무색소·노화형",
+        "description": "피지가 많고 민감하며, 색소침착은 적지만 노화 고민이 있는 타입.",
+        "indicators": {"지성(O)": True, "민감성(S)": True, "색소침착(P)": False, "노화(W)": True},
+        "main_concern": "여드름·트러블, 노화·주름, 자극 반응",
+        "care_direction": "저자극 안티에이징 케어, 저농도 레티놀로 시작, 자외선 차단 필수",
+    },
+    "ORPT": {
+        "full_name": "지성·저항·색소·탄력형",
+        "description": "피지 분비가 많고 외부 자극에 강하며, 색소침착 경향이 있지만 탄력은 좋은 타입.",
+        "indicators": {"지성(O)": True, "민감성(S)": False, "색소침착(P)": True, "노화(W)": False},
+        "main_concern": "색소침착, 피지 과다, 모공 관리",
+        "care_direction": "나이아신아마이드·비타민C로 미백 케어, 각질 관리로 모공 최소화",
+    },
+    "ORPW": {
+        "full_name": "지성·저항·색소·노화형",
+        "description": "피지가 많고 자극에 강하며, 색소침착과 노화가 동시에 진행되는 타입.",
+        "indicators": {"지성(O)": True, "민감성(S)": False, "색소침착(P)": True, "노화(W)": True},
+        "main_concern": "색소침착, 노화·주름, 피지 과다",
+        "care_direction": "레티놀+비타민C 병용, SPF50+ 자외선 차단, 각질 관리",
+    },
+    "ORNT": {
+        "full_name": "지성·저항·무색소·탄력형",
+        "description": "피지가 많고 자극에 강하며, 색소침착과 노화 고민이 거의 없는 건강한 타입.",
+        "indicators": {"지성(O)": True, "민감성(S)": False, "색소침착(P)": False, "노화(W)": False},
+        "main_concern": "피지 과다, 모공, 여드름",
+        "care_direction": "가벼운 보습 위주, 클렌징으로 피지·모공 케어, 자외선 차단으로 유지",
+    },
+    "ORNW": {
+        "full_name": "지성·저항·무색소·노화형",
+        "description": "피지가 많고 자극에 강하며, 색소침착은 적지만 노화가 진행되는 타입.",
+        "indicators": {"지성(O)": True, "민감성(S)": False, "색소침착(P)": False, "노화(W)": True},
+        "main_concern": "노화·주름, 피지 과다",
+        "care_direction": "안티에이징 세럼 집중 케어, 레티놀 적극 활용, 자외선 차단",
+    },
+    "DSPT": {
+        "full_name": "건성·민감·색소·탄력형",
+        "description": "건조하고 민감하며, 색소침착 경향이 있지만 탄력은 유지된 타입.",
+        "indicators": {"지성(O)": False, "민감성(S)": True, "색소침착(P)": True, "노화(W)": False},
+        "main_concern": "건조함, 민감 반응, 색소침착",
+        "care_direction": "고보습 저자극 제품, 세라마이드로 장벽 강화, 자외선 차단으로 색소 예방",
+    },
+    "DSPW": {
+        "full_name": "건성·민감·색소·노화형",
+        "description": "건조하고 민감하며, 색소침착과 노화 고민을 동시에 가진 가장 복합적인 타입.",
+        "indicators": {"지성(O)": False, "민감성(S)": True, "색소침착(P)": True, "노화(W)": True},
+        "main_concern": "건조함, 민감 반응, 색소침착, 노화·주름",
+        "care_direction": "피부 장벽 강화 최우선, SPF50+ 자외선 차단, 순한 성분의 안티에이징 케어",
+    },
+    "DSNT": {
+        "full_name": "건성·민감·무색소·탄력형",
+        "description": "건조하고 민감하지만, 색소침착과 노화 고민이 적은 타입.",
+        "indicators": {"지성(O)": False, "민감성(S)": True, "색소침착(P)": False, "노화(W)": False},
+        "main_concern": "건조함, 민감 반응, 피부 장벽 약화",
+        "care_direction": "세라마이드·히알루론산 집중 보습, 향료·알코올 무첨가 제품 선택",
+    },
+    "DSNW": {
+        "full_name": "건성·민감·무색소·노화형",
+        "description": "건조하고 민감하며, 색소침착은 적지만 노화가 진행되는 타입.",
+        "indicators": {"지성(O)": False, "민감성(S)": True, "색소침착(P)": False, "노화(W)": True},
+        "main_concern": "건조함, 노화·주름, 민감 반응",
+        "care_direction": "저자극 안티에이징+고보습 복합 케어, 펩타이드 세럼 활용",
+    },
+    "DRPT": {
+        "full_name": "건성·저항·색소·탄력형",
+        "description": "건조하고 자극에 강하며, 색소침착 경향이 있지만 탄력은 좋은 타입.",
+        "indicators": {"지성(O)": False, "민감성(S)": False, "색소침착(P)": True, "노화(W)": False},
+        "main_concern": "건조함, 색소침착, 기미",
+        "care_direction": "충분한 보습 후 나이아신아마이드·비타민C로 미백 케어, 자외선 차단",
+    },
+    "DRPW": {
+        "full_name": "건성·저항·색소·노화형",
+        "description": "건조하고 자극에 강하며, 색소침착과 노화가 동시에 진행되는 타입.",
+        "indicators": {"지성(O)": False, "민감성(S)": False, "색소침착(P)": True, "노화(W)": True},
+        "main_concern": "건조함, 색소침착, 노화·주름",
+        "care_direction": "레티놀+나이아신아마이드 병용, 고보습 오일 추가, SPF50+ 자외선 차단",
+    },
+    "DRNT": {
+        "full_name": "건성·저항·무색소·탄력형",
+        "description": "건조하고 자극에 강하며, 색소침착과 노화 고민이 거의 없는 타입.",
+        "indicators": {"지성(O)": False, "민감성(S)": False, "색소침착(P)": False, "노화(W)": False},
+        "main_concern": "건조함, 수분 부족",
+        "care_direction": "집중 보습 루틴, 히알루론산·글리세린 중심 케어, 자외선 차단으로 유지",
+    },
+    "DRNW": {
+        "full_name": "건성·저항·무색소·노화형",
+        "description": "건조하고 자극에 강하며, 색소침착은 적지만 노화가 진행되는 타입.",
+        "indicators": {"지성(O)": False, "민감성(S)": False, "색소침착(P)": False, "노화(W)": True},
+        "main_concern": "건조함, 노화·주름",
+        "care_direction": "레티놀·펩타이드 세럼으로 안티에이징, 리치한 보습 크림, 자외선 차단",
+    },
+}
+
+# ─────────────────────────────────────────────
 # 1. 데이터 로드
 # ─────────────────────────────────────────────
 @st.cache_data
@@ -272,6 +390,19 @@ def infer_skin_scores(image_bytes: bytes) -> dict:
         "Pigmentation_Severity": float(np.clip(reg_out[3], 0.0,  6.0)),
         "Sensitivity_AI":        6.49 if cls_pred == 1 else 0.0,
     }
+
+
+def classify_brightness(image_bytes: bytes) -> str:
+    """HSV V채널(= RGB 최댓값) 평균으로 명도 판별.
+    V < 80 → too_dark / V > 180 → too_bright / 그 외 → normal"""
+    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    img_np = np.array(img, dtype=np.float32)
+    mean_v = img_np.max(axis=2).mean()
+    if mean_v < 80:
+        return "too_dark"
+    if mean_v > 180:
+        return "too_bright"
+    return "normal"
 
 
 # ─────────────────────────────────────────────
@@ -488,6 +619,25 @@ def get_user_weights(user_scores: dict) -> dict:
             weights[f] = weights.get(f, 0) + w
     total = sum(weights.values()) or 1.0
     return {k: v / total for k, v in weights.items()}
+
+
+def get_baumann_type(user_scores: dict) -> str:
+    """Baumann 16 타입 분류 (Baumann 2008 기준치 적용).
+    D/O: Dryness≥2.88 → D, else O
+    S/R: Acne≥3.94 OR Sensitivity≥1.45 → S, else R
+    P/N: Pigmentation≥1.97 → P, else N
+    W/T: Aging≥1.02 → W, else T"""
+    dry  = user_scores.get("Dryness_Severity", 0)
+    acne = user_scores.get("Acne_Severity", 0)
+    sens = user_scores.get("Sensitivity_Severity", 0)
+    pig  = user_scores.get("Pigmentation_Severity", 0)
+    age  = user_scores.get("Aging_Severity", 0)
+
+    d_axis = "D" if dry  >= 2.88 else "O"
+    s_axis = "S" if (acne >= 3.94 or sens >= 1.45) else "R"
+    p_axis = "P" if pig  >= 1.97 else "N"
+    w_axis = "W" if age  >= 1.02 else "T"
+    return f"{d_axis}{s_axis}{p_axis}{w_axis}"
 
 
 def feature_match_score(func_str, user_weights: dict) -> float:
@@ -937,6 +1087,47 @@ def render_card(rec: dict):
 """, unsafe_allow_html=True)
 
 
+def render_baumann_card(baumann_type: str):
+    data = BAUMANN_TYPE_DATA.get(baumann_type)
+    if data is None:
+        return
+
+    ind_tags = ""
+    for label, is_pos in data["indicators"].items():
+        color = "#FF6B6B" if is_pos else "#4ECDC4"
+        ind_tags += (
+            f'<span style="display:inline-block;background:{color};color:white;'
+            f'border-radius:8px;padding:2px 10px;margin:3px 2px;font-size:12px">'
+            f'{label}</span>'
+        )
+
+    st.markdown(f"""
+<div style="background:#f0f7ff;border-radius:12px;padding:20px 24px;
+            margin-top:24px;border:1px solid #bee3f8">
+  <div style="font-size:12px;color:#888;margin-bottom:4px">Baumann 피부 타입</div>
+  <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:6px">
+    <span style="font-size:32px;font-weight:bold;color:#2c7da0">{baumann_type}</span>
+    <span style="font-size:15px;font-weight:600;color:#444">{data['full_name']}</span>
+  </div>
+  <div style="margin-bottom:10px">{ind_tags}</div>
+  <div style="color:#555;font-size:13px;margin-bottom:12px">{data['description']}</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+    <div style="background:#fff;border-radius:8px;padding:10px 14px">
+      <div style="font-size:11px;color:#999;margin-bottom:4px">주요 고민</div>
+      <div style="font-size:13px;font-weight:600">{data['main_concern']}</div>
+    </div>
+    <div style="background:#fff;border-radius:8px;padding:10px 14px">
+      <div style="font-size:11px;color:#999;margin-bottom:4px">케어 방향</div>
+      <div style="font-size:13px">{data['care_direction']}</div>
+    </div>
+  </div>
+  <div style="font-size:11px;color:#bbb">
+    출처: Baumann, L. (2008). Dermatologic Clinics, 26(3), 359–373.
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+
 # ─────────────────────────────────────────────
 # 9. MAIN APP
 # ─────────────────────────────────────────────
@@ -1076,115 +1267,124 @@ def main():
                 if uploaded is not None:
                     st.image(uploaded, caption="업로드된 사진", use_container_width=True)
 
-                    with st.spinner("AI 피부 분석 중..."):
-                        image_bytes = uploaded.read()
-                        inferred = infer_skin_scores(image_bytes)
+                    image_bytes = uploaded.read()
+                    _brightness = classify_brightness(image_bytes)
 
-                    st.success("분석 완료!")
-                    st.divider()
-
-                    st.markdown("**🤖 AI 분석 결과**")
-                    auto_cols = ["Acne_Severity", "Aging_Severity", "Pigmentation_Severity"]
-                    for col in auto_cols:
-                        val = inferred[col]
-                        bar_w = min(10, int(val))
-                        st.markdown(
-                            f"**{SEVERITY_EMOJI[col]} {SEVERITY_LABELS[col]}** `{val:.2f}` "
-                            f"{'█' * bar_w}{'░' * (10 - bar_w)}"
-                        )
-
-                    st.divider()
-                    st.markdown("**📋 설문 (AI 보완용)**")
-
-                    dryness_opt = st.radio(
-                        "💧 피부 건조함이 어느 정도인가요?",
-                        ["거의 없음", "가끔 당김", "자주 당김", "항상 건조"],
-                        horizontal=True,
-                    )
-                    dryness_survey_map = {
-                        "거의 없음": 1.0, "가끔 당김": 3.5,
-                        "자주 당김": 6.5, "항상 건조": 9.0,
-                    }
-                    dryness_survey = dryness_survey_map[dryness_opt]
-                    dryness_final = round(0.4 * inferred["Dryness_AI"] + 0.6 * dryness_survey, 2)
-
-                    sens_opt = st.radio(
-                        "🌿 민감성 피부인가요?",
-                        ["아니오", "예"],
-                        horizontal=True,
-                    )
-                    sens_survey = 6.49 if sens_opt == "예" else 0.0
-                    sens_ai = inferred["Sensitivity_AI"]
-                    if sens_ai > 0 and sens_survey > 0:
-                        sens_final = 6.49
-                    elif sens_ai > 0 or sens_survey > 0:
-                        sens_final = 3.25
+                    if _brightness == "too_dark":
+                        st.warning("⚠️ 이미지가 너무 어둡습니다 (HSV V채널 평균 < 80). 더 밝은 환경에서 재촬영 후 다시 업로드해 주세요.")
+                        user_scores = {c: 0.0 for c in SEVERITY_COLS}
+                    elif _brightness == "too_bright":
+                        st.warning("⚠️ 이미지가 너무 밝습니다 (HSV V채널 평균 > 180). 직사광선을 피해 재촬영 후 다시 업로드해 주세요.")
+                        user_scores = {c: 0.0 for c in SEVERITY_COLS}
                     else:
-                        sens_final = 0.0
+                        with st.spinner("AI 피부 분석 중..."):
+                            inferred = infer_skin_scores(image_bytes)
 
-                    st.divider()
-                    st.markdown("**👤 기본 정보 (추천 정확도 향상)**")
-                    col_g, col_a = st.columns(2)
-                    with col_g:
-                        gender_opt = st.radio("성별", ["여성 (0)", "남성 (1)"], horizontal=True)
-                        gender_val = 0.0 if "여성" in gender_opt else 1.0
-                    with col_a:
-                        age_val = st.slider("연령", 1, 100, 30, 1)
-                        age_knn = max(15, min(age_val, 49))
-                    col_c, col_d = st.columns(2)
-                    with col_c:
-                        climate_opt = st.selectbox("거주 기후", ["summer", "Temperate", "winter", "Dry"])
-                        climate_enc_map = {"summer": 2, "Temperate": 1, "winter": 3, "Dry": 0}
-                        climate_enc_val = climate_enc_map[climate_opt]
-                    with col_d:
-                        diet_opt = st.selectbox("식단 유형", ["Balanced", "Vegan", "High_Dairy", "Junk_Food", "High_Sugar"])
-                        diet_enc_map = {"Balanced": 0, "Vegan": 4, "High_Dairy": 1, "Junk_Food": 2, "High_Sugar": 3}
-                        diet_enc_val = diet_enc_map[diet_opt]
+                        st.success("분석 완료!")
+                        st.divider()
 
-                    col_st2, col_hs2 = st.columns(2)
-                    with col_st2:
-                        skin_type_opt2 = st.selectbox(
-                            "피부 타입", ["Combination", "Dry", "Normal", "Oily", "Sensitive"],
-                            key="photo_skin_type"
+                        st.markdown("**🤖 AI 분석 결과**")
+                        auto_cols = ["Acne_Severity", "Aging_Severity", "Pigmentation_Severity"]
+                        for col in auto_cols:
+                            val = inferred[col]
+                            bar_w = min(10, int(val))
+                            st.markdown(
+                                f"**{SEVERITY_EMOJI[col]} {SEVERITY_LABELS[col]}** `{val:.2f}` "
+                                f"{'█' * bar_w}{'░' * (10 - bar_w)}"
+                            )
+
+                        st.divider()
+                        st.markdown("**📋 설문 (AI 보완용)**")
+
+                        dryness_opt = st.radio(
+                            "💧 피부 건조함이 어느 정도인가요?",
+                            ["거의 없음", "가끔 당김", "자주 당김", "항상 건조"],
+                            horizontal=True,
                         )
-                        skin_type_enc_map2 = {"Combination": 0, "Dry": 1, "Normal": 2, "Oily": 3, "Sensitive": 4}
-                        skin_type_enc_val = float(skin_type_enc_map2[skin_type_opt2])
-                    with col_hs2:
-                        hormonal_opt2 = st.selectbox(
-                            "호르몬 상태", ["Stable", "Teen", "Pregnant", "PCOS"],
-                            key="photo_hormonal"
-                        )
-                        hormonal_enc_map2 = {"Stable": 3, "Teen": 4, "Pregnant": 1, "PCOS": 2}
-                        hormonal_enc_val = float(hormonal_enc_map2[hormonal_opt2])
+                        dryness_survey_map = {
+                            "거의 없음": 1.0, "가끔 당김": 3.5,
+                            "자주 당김": 6.5, "항상 건조": 9.0,
+                        }
+                        dryness_survey = dryness_survey_map[dryness_opt]
+                        dryness_final = round(0.4 * inferred["Dryness_AI"] + 0.6 * dryness_survey, 2)
 
-                    user_scores = {
-                        "Acne_Severity":         inferred["Acne_Severity"],
-                        "Dryness_Severity":      dryness_final,
-                        "Aging_Severity":        inferred["Aging_Severity"],
-                        "Pigmentation_Severity": inferred["Pigmentation_Severity"],
-                        "Sensitivity_Severity":  sens_final,
-                        "age_input":             float(age_knn),
-                        "gender_input":          gender_val,
-                        "climate_enc":           float(climate_enc_val),
-                        "diet_enc":              float(diet_enc_val),
-                        "skin_type_enc":         skin_type_enc_val,
-                        "hormonal_enc":          hormonal_enc_val,
-                    }
-
-                    st.divider()
-                    st.markdown("**✅ 최종 입력값 요약**")
-                    for col in SEVERITY_COLS:
-                        val = user_scores[col]
-                        source = "🤖 AI" if col in auto_cols else "🤖+📋 결합"
-                        bar_w = min(10, int(val))
-                        st.markdown(
-                            f"{source} **{SEVERITY_EMOJI[col]} {SEVERITY_LABELS[col]}** "
-                            f"`{val:.2f}` {'█' * bar_w}{'░' * (10 - bar_w)}"
+                        sens_opt = st.radio(
+                            "🌿 민감성 피부인가요?",
+                            ["아니오", "예"],
+                            horizontal=True,
                         )
-                    st.caption(
-                        f"👤 성별: {'여성' if gender_val == 0 else '남성'} | "
-                        f"연령: {age_val}세 | 기후: {climate_opt} | 식단: {diet_opt}"
-                    )
+                        sens_survey = 6.49 if sens_opt == "예" else 0.0
+                        sens_ai = inferred["Sensitivity_AI"]
+                        if sens_ai > 0 and sens_survey > 0:
+                            sens_final = 6.49
+                        elif sens_ai > 0 or sens_survey > 0:
+                            sens_final = 3.25
+                        else:
+                            sens_final = 0.0
+
+                        st.divider()
+                        st.markdown("**👤 기본 정보 (추천 정확도 향상)**")
+                        col_g, col_a = st.columns(2)
+                        with col_g:
+                            gender_opt = st.radio("성별", ["여성 (0)", "남성 (1)"], horizontal=True)
+                            gender_val = 0.0 if "여성" in gender_opt else 1.0
+                        with col_a:
+                            age_val = st.slider("연령", 1, 100, 30, 1)
+                            age_knn = max(15, min(age_val, 49))
+                        col_c, col_d = st.columns(2)
+                        with col_c:
+                            climate_opt = st.selectbox("거주 기후", ["summer", "Temperate", "winter", "Dry"])
+                            climate_enc_map = {"summer": 2, "Temperate": 1, "winter": 3, "Dry": 0}
+                            climate_enc_val = climate_enc_map[climate_opt]
+                        with col_d:
+                            diet_opt = st.selectbox("식단 유형", ["Balanced", "Vegan", "High_Dairy", "Junk_Food", "High_Sugar"])
+                            diet_enc_map = {"Balanced": 0, "Vegan": 4, "High_Dairy": 1, "Junk_Food": 2, "High_Sugar": 3}
+                            diet_enc_val = diet_enc_map[diet_opt]
+
+                        col_st2, col_hs2 = st.columns(2)
+                        with col_st2:
+                            skin_type_opt2 = st.selectbox(
+                                "피부 타입", ["Combination", "Dry", "Normal", "Oily", "Sensitive"],
+                                key="photo_skin_type"
+                            )
+                            skin_type_enc_map2 = {"Combination": 0, "Dry": 1, "Normal": 2, "Oily": 3, "Sensitive": 4}
+                            skin_type_enc_val = float(skin_type_enc_map2[skin_type_opt2])
+                        with col_hs2:
+                            hormonal_opt2 = st.selectbox(
+                                "호르몬 상태", ["Stable", "Teen", "Pregnant", "PCOS"],
+                                key="photo_hormonal"
+                            )
+                            hormonal_enc_map2 = {"Stable": 3, "Teen": 4, "Pregnant": 1, "PCOS": 2}
+                            hormonal_enc_val = float(hormonal_enc_map2[hormonal_opt2])
+
+                        user_scores = {
+                            "Acne_Severity":         inferred["Acne_Severity"],
+                            "Dryness_Severity":      dryness_final,
+                            "Aging_Severity":        inferred["Aging_Severity"],
+                            "Pigmentation_Severity": inferred["Pigmentation_Severity"],
+                            "Sensitivity_Severity":  sens_final,
+                            "age_input":             float(age_knn),
+                            "gender_input":          gender_val,
+                            "climate_enc":           float(climate_enc_val),
+                            "diet_enc":              float(diet_enc_val),
+                            "skin_type_enc":         skin_type_enc_val,
+                            "hormonal_enc":          hormonal_enc_val,
+                        }
+
+                        st.divider()
+                        st.markdown("**✅ 최종 입력값 요약**")
+                        for col in SEVERITY_COLS:
+                            val = user_scores[col]
+                            source = "🤖 AI" if col in auto_cols else "🤖+📋 결합"
+                            bar_w = min(10, int(val))
+                            st.markdown(
+                                f"{source} **{SEVERITY_EMOJI[col]} {SEVERITY_LABELS[col]}** "
+                                f"`{val:.2f}` {'█' * bar_w}{'░' * (10 - bar_w)}"
+                            )
+                        st.caption(
+                            f"👤 성별: {'여성' if gender_val == 0 else '남성'} | "
+                            f"연령: {age_val}세 | 기후: {climate_opt} | 식단: {diet_opt}"
+                        )
                 else:
                     st.info(
                         "jpg 또는 png 파일을 업로드하면 AI가 자동으로 피부를 분석하고, "
@@ -1275,6 +1475,9 @@ def main():
                     for i, rec in enumerate(items):
                         with cols[i % 3]:
                             render_card(rec)
+
+                st.divider()
+                render_baumann_card(get_baumann_type(st.session_state["last_scores"]))
             else:
                 st.markdown("""
 ### 추천 방식 안내
