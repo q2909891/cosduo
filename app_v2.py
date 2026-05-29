@@ -1110,15 +1110,15 @@ def render_baumann_card(baumann_type: str):
     <span style="font-size:15px;font-weight:600;color:#444">{data['full_name']}</span>
   </div>
   <div style="margin-bottom:10px">{ind_tags}</div>
-  <div style="color:#555;font-size:13px;margin-bottom:12px">{data['description']}</div>
+  <div style="color:#333;font-size:13px;margin-bottom:12px">{data['description']}</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
     <div style="background:#fff;border-radius:8px;padding:10px 14px">
-      <div style="font-size:11px;color:#999;margin-bottom:4px">주요 고민</div>
-      <div style="font-size:13px;font-weight:600">{data['main_concern']}</div>
+      <div style="font-size:11px;color:#888;margin-bottom:4px">주요 고민</div>
+      <div style="font-size:13px;font-weight:600;color:#222">{data['main_concern']}</div>
     </div>
     <div style="background:#fff;border-radius:8px;padding:10px 14px">
-      <div style="font-size:11px;color:#999;margin-bottom:4px">케어 방향</div>
-      <div style="font-size:13px">{data['care_direction']}</div>
+      <div style="font-size:11px;color:#888;margin-bottom:4px">케어 방향</div>
+      <div style="font-size:13px;color:#222">{data['care_direction']}</div>
     </div>
   </div>
   <div style="font-size:11px;color:#bbb">
@@ -1634,7 +1634,7 @@ def main():
                         m = run_evaluation(users, inter, products, knn_tmp, sc_tmp,
                                            n_eval=n_eval, svd_model=svd_mdl,
                                            bpr_model=bpr_mdl, lgcn_model=lgcn_mdl)
-                        hybrid_row = m[m["모델"] == "하이브리드 (KNN)"].iloc[0]
+                        hybrid_row = m[m["모델"] == "하이브리드 KNN (권장)"].iloc[0]
                         k_results.append({
                             "K값": k_val,
                             "Precision@15": hybrid_row.get("Precision@15", 0),
