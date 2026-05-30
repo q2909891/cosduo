@@ -223,12 +223,7 @@ def main():
     )
     st.markdown(CARD_CSS, unsafe_allow_html=True)
 
-    st.title("🔬 COSDUO — 안면부 피부질환 분류 파일럿")
-    st.caption(
-        "ResNet50 기반 피부질환 6종 분류 + 아토피 EASI 중증도 판정 | "
-        "이화여자대학교 데이터사이언스대학원 DUO COS | "
-        "GitHub: https://github.com/q2909891/cosduo"
-    )
+    st.title("안면부 피부질환 분류 파일럿")
 
     st.markdown(
         '<div class="warning-box">⚠️ <b>본 서비스는 의료 진단을 대체하지 않습니다.</b> '
