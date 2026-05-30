@@ -319,11 +319,25 @@ def main():
                 st.subheader("치료 성분 가이드")
                 row = get_treatment(disease, sev_label, treat_df)
                 if row is not None:
-                    cols = st.columns(3)
-                    cols[0].metric("1차 치료", row["1차치료"])
-                    cols[1].metric("2차 치료", row["2차치료"])
-                    cols[2].metric("주요 성분", row["주요성분"][:30] + "…"
-                                   if len(str(row["주요성분"])) > 30 else row["주요성분"])
+                    st.markdown(f"""
+<div style="background:#f8f9fa;border-radius:12px;padding:16px 20px;
+            border-left:4px solid #4ECDC4;margin-bottom:8px">
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+    <div style="background:#fff;border-radius:8px;padding:12px 14px">
+      <div style="font-size:12px;font-weight:700;color:#555;margin-bottom:6px">1차 치료</div>
+      <div style="font-size:13px;font-weight:400;color:#222;line-height:1.6">{row["1차치료"]}</div>
+    </div>
+    <div style="background:#fff;border-radius:8px;padding:12px 14px">
+      <div style="font-size:12px;font-weight:700;color:#555;margin-bottom:6px">2차 치료</div>
+      <div style="font-size:13px;font-weight:400;color:#222;line-height:1.6">{row["2차치료"]}</div>
+    </div>
+    <div style="background:#fff;border-radius:8px;padding:12px 14px">
+      <div style="font-size:12px;font-weight:700;color:#555;margin-bottom:6px">주요 성분</div>
+      <div style="font-size:13px;font-weight:400;color:#222;line-height:1.6">{row["주요성분"]}</div>
+    </div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
                     st.caption(
                         "※ 치료 가이드는 AAD(미국피부과학회) 및 대한피부과학회 가이드라인 기반입니다. "
                         "실제 처방은 전문의와 상담하십시오."
@@ -383,7 +397,26 @@ def main():
             ["전체"] + sorted(treat_df["질환"].unique().tolist()),
         )
         show_df = treat_df if disease_filter == "전체" else treat_df[treat_df["질환"] == disease_filter]
-        st.dataframe(show_df.reset_index(drop=True), use_container_width=True)
+
+        SEV_COLOR = {"경증": "#4ECDC4", "중등도": "#FFA94D", "중증": "#FF6B6B"}
+        for disease_name, group in show_df.groupby("질환", sort=False):
+            st.markdown(f"#### {disease_name}")
+            cols = st.columns(len(group))
+            for col, (_, row) in zip(cols, group.iterrows()):
+                color = SEV_COLOR.get(row["중증도"], "#888")
+                col.markdown(f"""
+<div style="border-radius:12px;padding:14px 16px;border-top:4px solid {color};
+            background:#fafafa;margin-bottom:4px">
+  <div style="font-size:12px;font-weight:700;color:{color};margin-bottom:10px">{row["중증도"]}</div>
+  <div style="font-size:11px;font-weight:700;color:#555;margin-bottom:4px">1차 치료</div>
+  <div style="font-size:12px;color:#222;margin-bottom:10px;line-height:1.5">{row["1차치료"]}</div>
+  <div style="font-size:11px;font-weight:700;color:#555;margin-bottom:4px">2차 치료</div>
+  <div style="font-size:12px;color:#222;margin-bottom:10px;line-height:1.5">{row["2차치료"]}</div>
+  <div style="font-size:11px;font-weight:700;color:#555;margin-bottom:4px">주요 성분</div>
+  <div style="font-size:12px;color:#222;line-height:1.5">{row["주요성분"]}</div>
+</div>
+""", unsafe_allow_html=True)
+            st.divider()
 
         with st.expander("📌 질환별 개요"):
             st.markdown("""
