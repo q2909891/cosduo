@@ -383,11 +383,15 @@ def infer_skin_scores(image_bytes: bytes) -> dict:
         reg_out = reg(x).squeeze().tolist()
         cls_pred = int(cls(x).argmax(dim=1).item())
 
+    def _safe(v, lo, hi):
+        v = float(v) if not (v != v) else 0.0  # NaN guard
+        return float(np.clip(v, lo, hi))
+
     return {
-        "Acne_Severity":         float(np.clip(reg_out[0], 0.0, 10.0)),
-        "Dryness_AI":            float(np.clip(reg_out[1], 0.0, 10.0)),
-        "Aging_Severity":        float(np.clip(reg_out[2], 0.0,  4.2)),
-        "Pigmentation_Severity": float(np.clip(reg_out[3], 0.0,  6.0)),
+        "Acne_Severity":         _safe(reg_out[0], 0.0, 10.0),
+        "Dryness_AI":            _safe(reg_out[1], 0.0, 10.0),
+        "Aging_Severity":        _safe(reg_out[2], 0.0,  4.2),
+        "Pigmentation_Severity": _safe(reg_out[3], 0.0,  6.0),
         "Sensitivity_AI":        6.49 if cls_pred == 1 else 0.0,
     }
 
@@ -1269,7 +1273,7 @@ def main():
                         auto_cols = ["Acne_Severity", "Aging_Severity", "Pigmentation_Severity"]
                         for col in auto_cols:
                             val = inferred[col]
-                            bar_w = min(10, int(val))
+                            bar_w = max(0, min(10, int(val)))
                             st.markdown(
                                 f"**{SEVERITY_EMOJI[col]} {SEVERITY_LABELS[col]}** `{val:.2f}` "
                                 f"{'█' * bar_w}{'░' * (10 - bar_w)}"
@@ -1289,6 +1293,40 @@ def main():
                         }
                         dryness_survey = dryness_survey_map[dryness_opt]
                         dryness_final = round(0.4 * inferred["Dryness_AI"] + 0.6 * dryness_survey, 2)
+
+                        aging_opt = st.radio(
+                            "⏳ 노화/주름 고민이 어느 정도인가요?",
+                            ["거의 없음", "가끔 보임", "주름/처짐 있음", "심한 편"],
+                            horizontal=True,
+                        )
+                        aging_survey_map = {
+                            "거의 없음": 0.2, "가끔 보임": 1.0,
+                            "주름/처짐 있음": 2.5, "심한 편": 4.0,
+                        }
+                        aging_survey = aging_survey_map[aging_opt]
+                        aging_ai = inferred["Aging_Severity"]
+                        aging_final = round(
+                            aging_ai * 0.4 + aging_survey * 0.6 if aging_ai > 0.1
+                            else aging_survey,
+                            2
+                        )
+
+                        pig_opt = st.radio(
+                            "⭐ 색소침착/기미 고민이 어느 정도인가요?",
+                            ["거의 없음", "약간 있음", "잡티/기미 있음", "심한 편"],
+                            horizontal=True,
+                        )
+                        pig_survey_map = {
+                            "거의 없음": 0.3, "약간 있음": 1.5,
+                            "잡티/기미 있음": 3.0, "심한 편": 5.5,
+                        }
+                        pig_survey = pig_survey_map[pig_opt]
+                        pig_ai = inferred["Pigmentation_Severity"]
+                        pig_final = round(
+                            pig_ai * 0.4 + pig_survey * 0.6 if pig_ai > 0.1
+                            else pig_survey,
+                            2
+                        )
 
                         sens_opt = st.radio(
                             "🌿 민감성 피부인가요?",
@@ -1342,8 +1380,8 @@ def main():
                         user_scores = {
                             "Acne_Severity":         inferred["Acne_Severity"],
                             "Dryness_Severity":      dryness_final,
-                            "Aging_Severity":        inferred["Aging_Severity"],
-                            "Pigmentation_Severity": inferred["Pigmentation_Severity"],
+                            "Aging_Severity":        aging_final,
+                            "Pigmentation_Severity": pig_final,
                             "Sensitivity_Severity":  sens_final,
                             "age_input":             float(age_knn),
                             "gender_input":          gender_val,
@@ -1357,10 +1395,9 @@ def main():
                         st.markdown("**✅ 최종 입력값 요약**")
                         for col in SEVERITY_COLS:
                             val = user_scores[col]
-                            source = "🤖 AI" if col in auto_cols else "🤖+📋 결합"
-                            bar_w = min(10, int(val))
+                            bar_w = max(0, min(10, int(val)))
                             st.markdown(
-                                f"{source} **{SEVERITY_EMOJI[col]} {SEVERITY_LABELS[col]}** "
+                                f"**{SEVERITY_EMOJI[col]} {SEVERITY_LABELS[col]}** "
                                 f"`{val:.2f}` {'█' * bar_w}{'░' * (10 - bar_w)}"
                             )
                         st.caption(
